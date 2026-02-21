@@ -2,18 +2,20 @@
 
 use clap::Parser;
 use iroh::{Endpoint, EndpointAddr, EndpointId, PublicKey};
+use iroh_tickets::Ticket;
 use n0_error::Result;
 use tracing::{error, info, warn};
 
 mod cli;
 mod config;
 mod frostyrpc;
+mod ticket;
 
 use cli::Args;
 use config::Config;
 use frostyrpc::FrostyServer;
 
-use crate::frostyrpc::FrostyClient;
+use crate::{frostyrpc::FrostyClient, ticket::FrostyTicket};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -45,20 +47,29 @@ async fn main() -> Result<()> {
 
     // set up the rpc
 
-    let frosty_rpc = FrostyServer::new("test".to_string());
+    let frosty_rpc = FrostyServer::new(config.token().to_string());
     let _router = iroh::protocol::RouterBuilder::new(endpoint.clone())
         .accept(frostyrpc::ALPN, frosty_rpc)
         .spawn();
 
     match args.command {
-        cli::Command::Server => {}
-        cli::Command::Client => {
-            let addr = match config.mother_ship() {
-                Some(addr) => addr,
-                None => endpoint.id(),
-            };
-            warn!("endpoint attach {:#?}", addr as EndpointId);
-            test_rpc(endpoint.clone(), addr, "test").await?;
+        cli::Command::Server => {
+            let ticket = FrostyTicket::new(endpoint.id(),config.token(), 5, 3);
+            let val = ticket.serialize();
+            println!("----------");
+            println!("{}",val);
+            println!("----------");
+            let bork = FrostyTicket::deserialize(val.as_str())?;
+            println!("{:#?}",bork)
+        }
+        cli::Command::Client{ ticket } => {
+            let t =  FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
+            // let addr = match config.mother_ship() {
+            //     Some(addr) => addr,
+            //     None => endpoint.id(),
+            // };
+            // warn!("endpoint attach {:#?}", addr as EndpointId);
+            test_rpc(endpoint.clone(),t.addr, t.token.as_str()).await?;
         }
     }
 

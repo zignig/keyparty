@@ -1,6 +1,4 @@
-// use clap::Parser;
 use clap_derive::Parser;
-// use iroh::EndpointId; 
 
 
 #[derive(Parser,Debug)]
@@ -12,6 +10,6 @@ pub struct Args {
 #[derive(Parser,Debug)]
 pub enum Command { 
     Server,
-    Client
+    Client { ticket : String }
 }
 

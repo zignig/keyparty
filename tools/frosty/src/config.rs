@@ -4,7 +4,7 @@ use n0_error::{AnyError, Result, StdResultExt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    frosty_topic: String,
+    token: String,
     mother_ship: Option<PublicKey>,
     secret: SecretKey,
 }
@@ -25,7 +25,7 @@ impl Config {
 
     pub fn new(secret: SecretKey,addr: EndpointId) -> Config {
         let config = Config {
-            frosty_topic: "frosty".to_string(),
+            token: "frosty".to_string(),
             mother_ship: Some(addr),
             secret: secret,
         };
@@ -34,10 +34,14 @@ impl Config {
     }
 
     pub fn secret(&self) -> SecretKey { 
-        return self.secret.clone()
+        self.secret.clone()
     }
 
     pub fn mother_ship(&self) -> Option<PublicKey>{ 
-        return self.mother_ship.clone()
+        self.mother_ship.clone()
+    }
+
+    pub fn token(&self) -> String { 
+        self.token.clone()
     }
 }
