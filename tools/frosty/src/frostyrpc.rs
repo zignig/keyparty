@@ -39,25 +39,15 @@ mod frosted {
     }
 
     #[derive(Debug, Serialize, Deserialize)]
-    struct Get {
-        key: String,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct List;
-
-    #[derive(Debug, Serialize, Deserialize)]
     struct Peers;
 
     #[derive(Debug, Serialize, Deserialize)]
-    struct Set {
-        key: String,
-        value: String,
-    }
+    struct PeerCount;
 
     #[derive(Debug, Serialize, Deserialize)]
-    struct SetMany;
+    struct Boop;
 
+    
     // Use the macro to generate both the StorageProtocol and StorageMessage enums
     // plus implement Channels for each type
     #[rpc_requests(message = FrostyMessage)]
@@ -65,21 +55,16 @@ mod frosted {
     enum FrostyProtocol {
         #[rpc(tx=oneshot::Sender<Result<(), String>>)]
         Auth(Auth),
-        #[rpc(tx=oneshot::Sender<Option<String>>)]
-        Get(Get),
-        #[rpc(tx=oneshot::Sender<()>)]
-        Set(Set),
-        #[rpc(tx=oneshot::Sender<u64>, rx=mpsc::Receiver<(String, String)>)]
-        SetMany(SetMany),
-        #[rpc(tx=mpsc::Sender<String>)]
-        List(List),
         #[rpc(tx=mpsc::Sender<PublicKey>)]
         Peers(Peers),
+        #[rpc(tx=oneshot::Sender<usize>)]
+        PeerCount(PeerCount),
+        #[rpc(tx=oneshot::Sender<usize>)]
+        Boop(Boop),
     }
 
     #[derive(Debug, Clone)]
     pub struct FrostyServer {
-        state: Arc<Mutex<BTreeMap<String, String>>>,
         peers: Arc<Mutex<BTreeMap<EndpointId, String>>>,
         auth_token: String,
     }
@@ -117,6 +102,7 @@ mod frosted {
                     }
                 }
             }
+            warn!("irpc exit");
             conn.closed().await;
             Ok(())
         }
@@ -125,67 +111,26 @@ mod frosted {
     impl FrostyServer {
         pub const ALPN: &[u8] = ALPN;
 
-        pub fn new(auth_token: String) -> Self {
-            Self {
-                state: Default::default(),
+        pub fn new(auth_token: String, endp: EndpointId) -> Self {
+            let s = Self {
                 peers: Default::default(),
                 auth_token,
-            }
+            };
+            s.peers.lock().unwrap().insert(endp, "myself".to_string());
+            s
         }
 
         async fn handle_authenticated(&self, msg: FrostyMessage) {
             match msg {
                 FrostyMessage::Auth(_) => unreachable!("handled in ProtocolHandler::accept"),
-                FrostyMessage::Get(get) => {
-                    info!("get {:?}", get);
-                    let WithChannels { tx, inner, .. } = get;
-                    let res = self.state.lock().unwrap().get(&inner.key).cloned();
-                    tx.send(res).await.ok();
-                }
-                FrostyMessage::Set(set) => {
-                    info!("set {:?}", set);
-                    let WithChannels { tx, inner, .. } = set;
-                    self.state.lock().unwrap().insert(inner.key, inner.value);
-                    tx.send(()).await.ok();
-                }
-                FrostyMessage::SetMany(list) => {
-                    let WithChannels { tx, mut rx, .. } = list;
-                    let mut i = 0;
-                    while let Ok(Some((key, value))) = rx.recv().await {
-                        let mut state = self.state.lock().unwrap();
-                        state.insert(key, value);
-                        i += 1;
-                    }
-                    tx.send(i).await.ok();
-                }
-                FrostyMessage::List(list) => {
-                    info!("list {:?}", list);
-                    let WithChannels { tx, .. } = list;
-                    let values = {
-                        let state = self.state.lock().unwrap();
-                        // TODO: use async lock to not clone here.
-                        let values: Vec<_> = state
-                            .iter()
-                            .map(|(key, value)| format!("{key}={value}"))
-                            .collect();
-                        values
-                    };
-                    for value in values {
-                        if tx.send(value).await.is_err() {
-                            break;
-                        }
-                    }
-                },
                 FrostyMessage::Peers(peers) => {
                     info!("peers {:?}", peers);
                     let WithChannels { tx, .. } = peers;
                     let peer_list = {
                         let state = self.peers.lock().unwrap();
                         // TODO: use async lock to not clone here.
-                        let values: Vec<_> = state
-                            .iter()
-                            .map(|(key, _value)| key.clone() )
-                            .collect();
+                        let values: Vec<_> =
+                            state.iter().map(|(key, _value)| key.clone()).collect();
                         values
                     };
                     for value in peer_list {
@@ -194,10 +139,20 @@ mod frosted {
                         }
                     }
                 }
+                FrostyMessage::PeerCount(peer_count) => {
+                    let WithChannels { tx, .. } = peer_count;
+                    let count = self.peers.lock().unwrap().len();
+                    tx.send(count).await.ok();
+                },
+                FrostyMessage::Boop(boop) => { 
+                    let WithChannels {tx , .. } = boop;
+                    tx.send(1).await.ok();
+                }
             }
         }
     }
 
+    #[derive(Debug)]
     pub struct FrostyClient {
         inner: Client<FrostyProtocol>,
     }
@@ -221,21 +176,16 @@ mod frosted {
                 .map_err(|err| anyhow::anyhow!(err))
         }
 
-        pub async fn get(&self, key: String) -> Result<Option<String>, irpc::Error> {
-            self.inner.rpc(Get { key }).await
-        }
-
-        pub async fn list(&self) -> Result<mpsc::Receiver<String>, irpc::Error> {
-            self.inner.server_streaming(List, 10).await
-        }
-
         pub async fn peers(&self) -> Result<mpsc::Receiver<PublicKey>, irpc::Error> {
             self.inner.server_streaming(Peers, 10).await
         }
 
-        pub async fn set(&self, key: String, value: String) -> Result<(), irpc::Error> {
-            let msg = Set { key, value };
-            self.inner.rpc(msg).await
+        pub async fn count(&self) -> Result<usize, irpc::Error> {
+            self.inner.rpc(PeerCount {}).await
+        }
+        
+        pub async fn boop(&self) -> Result<usize, irpc::Error> {
+            self.inner.rpc(Boop {}).await
         }
     }
 }

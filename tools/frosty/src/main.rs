@@ -1,5 +1,7 @@
 // Frosty generator
 
+use std::time::Duration;
+
 use clap::Parser;
 use iroh::{Endpoint, EndpointAddr, EndpointId, PublicKey};
 use iroh_tickets::Ticket;
@@ -36,7 +38,7 @@ async fn main() -> Result<()> {
         Err(e) => {
             error!("{:?}", e);
             let endpoint = Endpoint::builder().bind().await?;
-            let config = Config::new(endpoint.secret_key().clone(), endpoint.id());
+            let config = Config::new(endpoint.secret_key().clone());
             (config, endpoint)
         }
     };
@@ -46,44 +48,110 @@ async fn main() -> Result<()> {
     info!("{}", &endpoint.id());
 
     // set up the rpc
+    let token = match args.command {
+        cli::Command::Server { ref token } => token.clone(),
+        cli::Command::Client { ref ticket } => {
+            let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
+            ticket.token.clone()
+        }
+    };
 
-    let frosty_rpc = FrostyServer::new(config.token().to_string());
-    let _router = iroh::protocol::RouterBuilder::new(endpoint.clone())
+    let frosty_rpc = FrostyServer::new(token, endpoint.id());
+    let router = iroh::protocol::RouterBuilder::new(endpoint.clone())
         .accept(frostyrpc::ALPN, frosty_rpc)
         .spawn();
 
     match args.command {
-        cli::Command::Server => {
-            let ticket = FrostyTicket::new(endpoint.id(),config.token(), 5, 3);
+        cli::Command::Server { token } => {
+            let ticket = FrostyTicket::new(endpoint.id(), token.clone(), 4, 1);
             let val = ticket.serialize();
             println!("----------");
-            println!("{}",val);
+            println!("{}", val);
             println!("----------");
             let bork = FrostyTicket::deserialize(val.as_str())?;
-            println!("{:#?}",bork)
+            println!("{:#?}", bork);
+            // test_rpc(endpoint.clone(), ticket.clone(), config).await?;
         }
-        cli::Command::Client{ ticket } => {
-            let t =  FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
-            // let addr = match config.mother_ship() {
-            //     Some(addr) => addr,
-            //     None => endpoint.id(),
-            // };
-            // warn!("endpoint attach {:#?}", addr as EndpointId);
-            test_rpc(endpoint.clone(),t.addr, t.token.as_str()).await?;
+        cli::Command::Client { ticket } => {
+            let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
+            test_rpc(endpoint.clone(), ticket.clone(), config).await?;
         }
     }
-
     tokio::signal::ctrl_c().await?;
+
+    router.shutdown();
     Ok(())
 }
 
-async fn test_rpc(endpoint: Endpoint, addr: EndpointId, auth: &str) -> Result<()> {
-    let client = FrostyClient::connect(endpoint, addr);
-    let _ = client.auth(auth).await?;
+// Testing for runnigng logic
 
-    let mut peers = client.peers().await?;
-    while let Some(value) = peers.recv().await? {
-        warn!("peers value = {value:?}");
+async fn test_rpc(endpoint: Endpoint, ticket: FrostyTicket, mut config: Config) -> Result<()> {
+    let client = FrostyClient::connect(endpoint.clone(), ticket.addr);
+
+    let _ = client.auth(ticket.token.as_str()).await?;
+
+    let count = client.count().await?;
+    println!("count of clients {}", count);
+
+    let mut loop_count = 0;
+
+    tokio::pin!(client);
+    loop {
+        let count = client.count().await?;
+        println!("{}", count);
+        if count == ticket.max_shares {
+            println!("needed clients");
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        loop_count += 1;
+        if loop_count > 500 {
+            break;
+        }
     }
+    // Get the peer list
+    let mut peer_list: Vec<PublicKey> = Vec::new();
+    let mut peers = client.peers().await?;
+    while let Some(peer) = peers.recv().await? {
+        // warn!("peer id {peer:?}");
+        peer_list.push(peer);
+    }
+    // println!("{:?}", &peer_list);
+    config.set_peers(peer_list.clone());
+
+    let my_id = endpoint.id();
+    // strip out my own key
+    peer_list.retain(|&key| key != my_id);
+
+    // collect the clients
+    let mut clients: Vec<(EndpointId, FrostyClient)> = Vec::new();
+
+    for peer in peer_list {
+        let client = FrostyClient::connect(endpoint.clone(), peer);
+        match client.auth(ticket.token.as_str()).await {
+            Ok(()) => {
+                info!("connection for {:?} worked", peer);
+                clients.push((peer, client));
+            }
+            Err(e) => {
+                error!("connection for {:?} failed with {:?}", peer, e);
+                error!("{:?}", ticket)
+            }
+        }
+    }
+    // println!("{:?}", clients);
+    tokio::pin!(clients);
+    loop {
+        for i in clients.iter() {
+            match i.1.boop().await {
+                Ok(v) => println!("{:?} -- {:?}", i.0, v),
+                Err(e) => error!("boop loop connection for {:?} failed with {:?}", i.0, e),
+            }
+        }
+        println!("-");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    tokio::signal::ctrl_c().await?;
+
     Ok(())
 }

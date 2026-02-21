@@ -4,9 +4,9 @@ use n0_error::{AnyError, Result, StdResultExt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    token: String,
     mother_ship: Option<PublicKey>,
     secret: SecretKey,
+    peers: Option<Vec<PublicKey>>,
 }
 
 impl Config {
@@ -23,16 +23,21 @@ impl Config {
         std::fs::write(Config::FILE_NAME, contents).expect("borked file");
     }
 
-    pub fn new(secret: SecretKey,addr: EndpointId) -> Config {
+    pub fn new(secret: SecretKey) -> Config {
         let config = Config {
-            token: "frosty".to_string(),
-            mother_ship: Some(addr),
+            mother_ship: None,
             secret: secret,
+            peers: None
         };
         config.save();
         config
     }
 
+    pub fn set_peers(&mut self,peers: Vec<PublicKey>) { 
+        self.peers = Some(peers);
+        self.save();
+    }
+    
     pub fn secret(&self) -> SecretKey { 
         self.secret.clone()
     }
@@ -41,7 +46,4 @@ impl Config {
         self.mother_ship.clone()
     }
 
-    pub fn token(&self) -> String { 
-        self.token.clone()
-    }
 }

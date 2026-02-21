@@ -9,7 +9,7 @@ pub struct Args {
 
 #[derive(Parser,Debug)]
 pub enum Command { 
-    Server,
+    Server { token : String },
     Client { ticket : String }
 }
 
