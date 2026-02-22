@@ -3,19 +3,22 @@
 use std::time::Duration;
 
 use clap::Parser;
-use iroh::{Endpoint, EndpointAddr, EndpointId, PublicKey};
+use iroh::{Endpoint, EndpointId, PublicKey};
 use iroh_tickets::Ticket;
 use n0_error::Result;
+use tokio::task;
 use tracing::{error, info, warn};
 
 mod cli;
 mod config;
 mod frostyrpc;
+mod process;
 mod ticket;
 
 use cli::Args;
 use config::Config;
 use frostyrpc::FrostyServer;
+use process::DistributedKeyGeneration;
 
 use crate::{frostyrpc::FrostyClient, ticket::FrostyTicket};
 
@@ -56,34 +59,70 @@ async fn main() -> Result<()> {
         }
     };
 
-    let frosty_rpc = FrostyServer::new(token, endpoint.id());
+    // make the frosty server
+    let frosty_rpc = FrostyServer::new(token.clone(), 3);
+    // create a local client
+    let local_rpc = frosty_rpc.clone().local();
+
     let router = iroh::protocol::RouterBuilder::new(endpoint.clone())
         .accept(frostyrpc::ALPN, frosty_rpc)
         .spawn();
 
-    match args.command {
+    // create the process based on the mode
+    let (process_client, ticket) = match args.command {
         cli::Command::Server { token } => {
-            let ticket = FrostyTicket::new(endpoint.id(), token.clone(), 4, 1);
+            let ticket = FrostyTicket::new(endpoint.id(), token.clone(), 3, 1);
             let val = ticket.serialize();
             println!("----------");
             println!("{}", val);
             println!("----------");
             let bork = FrostyTicket::deserialize(val.as_str())?;
             println!("{:#?}", bork);
-            // test_rpc(endpoint.clone(), ticket.clone(), config).await?;
+            (local_rpc, ticket)
         }
         cli::Command::Client { ticket } => {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
-            test_rpc(endpoint.clone(), ticket.clone(), config).await?;
+            // task::spawn(test_rpc(endpoint.clone(), ticket.clone(), config));
+            (FrostyClient::connect(endpoint.clone(), ticket.addr), ticket)
         }
-    }
+    };
+
+    // Kick off the process
+    // Create the generator
+    let dkg =
+        DistributedKeyGeneration::new(endpoint.clone(), process_client, ticket, endpoint.id());
+    // Spawn a new runner
+    let handle = task::spawn(dkg.run());
+    let _res = handle.await;
+
+    // task::spawn(local(process_client,token));
     tokio::signal::ctrl_c().await?;
 
-    router.shutdown();
+    let _ = router.shutdown().await;
     Ok(())
 }
 
-// Testing for runnigng logic
+// // local client test
+// async fn local(client: FrostyClient, auth: String) -> Result<()> {
+//     warn!("Start the local client");
+//     let _ = client.auth(auth.as_str()).await?;
+//     loop {
+//         let count = client.count().await?;
+//         warn!("peer count {:?}", count);
+//         if count == 3 {
+//             break;
+//         }
+//         tokio::time::sleep(Duration::from_secs(1)).await;
+//     }
+//     let mut peers = client.peers().await?;
+//     while let Some(peer) = peers.recv().await? {
+//         info!("local peer item {:?}", peer)
+//     }
+//     warn!("start the process");
+//     Ok(())
+// }
+
+// Testing for running logic
 
 async fn test_rpc(endpoint: Endpoint, ticket: FrostyTicket, mut config: Config) -> Result<()> {
     let client = FrostyClient::connect(endpoint.clone(), ticket.addr);
@@ -140,18 +179,26 @@ async fn test_rpc(endpoint: Endpoint, ticket: FrostyTicket, mut config: Config) 
         }
     }
     // println!("{:?}", clients);
+    // this is sync so it will stop if any of the nodes fail
     tokio::pin!(clients);
+    let mut fail_count = 0;
+    const MAX_FAIL: i32 = 5;
     loop {
         for i in clients.iter() {
             match i.1.boop().await {
                 Ok(v) => println!("{:?} -- {:?}", i.0, v),
-                Err(e) => error!("boop loop connection for {:?} failed with {:?}", i.0, e),
+                Err(e) => {
+                    error!("boop {:?} failed {:?} with {:?}", i.0, fail_count, e);
+                    fail_count += 1;
+                    if fail_count >= MAX_FAIL {
+                        return Ok(());
+                    }
+                    // try to reauth
+                    // let _ = i.1.auth(ticket.token.as_str()).await;
+                }
             }
         }
         println!("-");
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
-    tokio::signal::ctrl_c().await?;
-
-    Ok(())
 }

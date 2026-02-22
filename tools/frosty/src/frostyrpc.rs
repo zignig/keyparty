@@ -1,18 +1,17 @@
 pub use self::frosted::ALPN;
-pub use self::frosted::{FrostyClient, FrostyServer};
+pub use self::frosted::{FrostyClient, FrostyServer,ProcessSteps};
 /// Base on irpc-iroh auth example
-///
-use anyhow::Result;
-use iroh::endpoint::Endpoint;
-use iroh::protocol::Router;
-use tracing::warn;
 
 mod frosted {
-    use tracing::warn;
+    use tokio::task;
+    use tracing::{error, warn};
 
     use std::{
         collections::BTreeMap,
-        sync::{Arc, Mutex},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
 
     use anyhow::Result;
@@ -29,7 +28,13 @@ mod frosted {
     // Import the macro
     use irpc_iroh::{IrohLazyRemoteConnection, read_request};
     use serde::{Deserialize, Serialize};
-    use tracing::info;
+    
+    // Enum for the signing process 
+
+    pub enum ProcessSteps { 
+        Init,
+        CreateMesh,
+    }
 
     pub const ALPN: &[u8] = b"frosty-api/0";
 
@@ -47,7 +52,6 @@ mod frosted {
     #[derive(Debug, Serialize, Deserialize)]
     struct Boop;
 
-    
     // Use the macro to generate both the StorageProtocol and StorageMessage enums
     // plus implement Channels for each type
     #[rpc_requests(message = FrostyMessage)]
@@ -63,9 +67,14 @@ mod frosted {
         Boop(Boop),
     }
 
+    // Add in all the sections for the  tranport
+    // these are all arced so they can be shared
     #[derive(Debug, Clone)]
     pub struct FrostyServer {
+        max_peers: usize,
         peers: Arc<Mutex<BTreeMap<EndpointId, String>>>,
+        peer_count: Arc<AtomicUsize>,
+        counter: Arc<AtomicUsize>,
         auth_token: String,
     }
 
@@ -83,18 +92,25 @@ mod frosted {
                             conn.close(1u32.into(), b"permission denied");
                             break;
                         } else {
+                            let peer_count = self.peer_count.fetch_add(1, Ordering::SeqCst);
+                            if peer_count == self.max_peers {
+                                error!("MAX CLIENTS REACHED");
+                                // conn.close(1u32.into(), b"max_peers");
+                                // break;
+                            }
                             authed = true;
                             self.peers
                                 .lock()
                                 .unwrap()
                                 .insert(conn.remote_id().into(), "fren".to_string());
-                            warn!("{:?}", &self.peers);
+                            warn!("auth succeced for {:?}", conn.remote_id());
+                            // warn!("{:?}", &self.peers);
                             tx.send(Ok(())).await.ok();
                         }
                     }
                     msg => {
                         if !authed {
-                            conn.close(1u32.into(), b"permission denied");
+                            conn.close(1u32.into(), b"unauthed , try again");
                             break;
                         } else {
                             self.handle_authenticated(msg).await;
@@ -109,22 +125,45 @@ mod frosted {
     }
 
     impl FrostyServer {
-        pub const ALPN: &[u8] = ALPN;
+        // pub const ALPN: &[u8] = ALPN;
 
-        pub fn new(auth_token: String, endp: EndpointId) -> Self {
-            let s = Self {
+        // Make a new frosty server
+        pub fn new(auth_token: String,max_peers: usize) -> Self {
+            Self {
+                max_peers: max_peers,
                 peers: Default::default(),
+                peer_count: Arc::new(AtomicUsize::new(0)),
+                counter: Arc::new(AtomicUsize::new(0)),
                 auth_token,
-            };
-            s.peers.lock().unwrap().insert(endp, "myself".to_string());
-            s
+            }
         }
 
+        // Runner for local access
+        // This is for the endpoint that is hosting the key party.
+        async fn run(self, mut rx: tokio::sync::mpsc::Receiver<FrostyMessage>) {
+            while let Some(msg) = rx.recv().await {
+                self.handle_authenticated(msg).await;
+            }
+        }
+
+        pub fn local(self) -> FrostyClient {
+            // make a channel
+            let (tx, rx) = tokio::sync::mpsc::channel(2);
+            task::spawn(self.run(rx));
+            FrostyClient {
+                is_local: true,
+                inner: Client::local(tx),
+            }
+        }
+
+        // Handle mesasges that have
         async fn handle_authenticated(&self, msg: FrostyMessage) {
             match msg {
-                FrostyMessage::Auth(_) => unreachable!("handled in ProtocolHandler::accept"),
+                FrostyMessage::Auth(msg) => {
+                    let WithChannels { tx, .. } = msg;
+                    tx.send(Ok(())).await.ok();
+                }
                 FrostyMessage::Peers(peers) => {
-                    info!("peers {:?}", peers);
                     let WithChannels { tx, .. } = peers;
                     let peer_list = {
                         let state = self.peers.lock().unwrap();
@@ -143,26 +182,30 @@ mod frosted {
                     let WithChannels { tx, .. } = peer_count;
                     let count = self.peers.lock().unwrap().len();
                     tx.send(count).await.ok();
-                },
-                FrostyMessage::Boop(boop) => { 
-                    let WithChannels {tx , .. } = boop;
-                    tx.send(1).await.ok();
+                }
+                FrostyMessage::Boop(boop) => {
+                    let WithChannels { tx, .. } = boop;
+                    let counter = self.counter.fetch_add(1, Ordering::SeqCst);
+                    tx.send(counter).await.ok();
                 }
             }
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug,Clone)]
     pub struct FrostyClient {
+        is_local : bool,
         inner: Client<FrostyProtocol>,
     }
 
     impl FrostyClient {
         pub const ALPN: &[u8] = ALPN;
 
+        // Remote
         pub fn connect(endpoint: Endpoint, addr: impl Into<iroh::EndpointAddr>) -> FrostyClient {
             let conn = IrohLazyRemoteConnection::new(endpoint, addr.into(), Self::ALPN.to_vec());
             FrostyClient {
+                is_local: false,
                 inner: Client::boxed(conn),
             }
         }
@@ -183,9 +226,13 @@ mod frosted {
         pub async fn count(&self) -> Result<usize, irpc::Error> {
             self.inner.rpc(PeerCount {}).await
         }
-        
+
         pub async fn boop(&self) -> Result<usize, irpc::Error> {
             self.inner.rpc(Boop {}).await
+        }
+
+        pub fn local(&self) -> bool { 
+            self.is_local
         }
     }
 }

@@ -1,6 +1,6 @@
-use iroh::{EndpointId, PublicKey, SecretKey};
+use iroh::{PublicKey, SecretKey};
+use n0_error::{AnyError, Result};
 use serde::{Deserialize, Serialize};
-use n0_error::{AnyError, Result, StdResultExt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -27,23 +27,18 @@ impl Config {
         let config = Config {
             mother_ship: None,
             secret: secret,
-            peers: None
+            peers: None,
         };
         config.save();
         config
     }
 
-    pub fn set_peers(&mut self,peers: Vec<PublicKey>) { 
+    pub fn set_peers(&mut self, peers: Vec<PublicKey>) {
         self.peers = Some(peers);
         self.save();
     }
-    
-    pub fn secret(&self) -> SecretKey { 
+
+    pub fn secret(&self) -> SecretKey {
         self.secret.clone()
     }
-
-    pub fn mother_ship(&self) -> Option<PublicKey>{ 
-        self.mother_ship.clone()
-    }
-
 }
