@@ -280,14 +280,14 @@ impl DistributedKeyGeneration {
                         &self.round2_map_in,
                     )
                     .expect("part 3 build error");
-                    println!("{:#?}",key_share);
+                    // println!("{:#?}",key_share);
                     let key_share_vec = key_share.serialize().expect("bad keyshare serialization");
                     let public_share_vec = public_share.serialize().expect("bad public serialization");
                     let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
                     let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
                     ks_hex.make_ascii_lowercase();
                     ps_hex.make_ascii_lowercase();
-                    println!("{:?}",ks_hex);
+                    // println!("{:?}",ks_hex);
                     self.config.set_packages(ks_hex,ps_hex);
                     info!("It's built");
                     
