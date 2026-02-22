@@ -40,6 +40,8 @@ mod frosted {
         Init,
         CreateMesh,
         Part1Send,
+        Part1Fetch,
+        Part1Check,
     }
 
     pub const ALPN: &[u8] = b"frosty-api/0";
@@ -59,11 +61,15 @@ mod frosted {
     struct Boop;
 
     #[derive(Debug, Serialize, Deserialize)]
-    struct Part1Send { 
-        pack: r1package
+    struct Part1Send {
+        pack: r1package,
     }
 
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Part1Count;
 
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Part1Fetch;
 
     // Use the macro to generate both the StorageProtocol and StorageMessage enums
     // plus implement Channels for each type
@@ -80,6 +86,10 @@ mod frosted {
         Boop(Boop),
         #[rpc(tx=oneshot::Sender<()>)]
         Part1Send(Part1Send),
+        #[rpc(tx=oneshot::Sender<usize>)]
+        Part1Count(Part1Count),
+        #[rpc(tx=mpsc::Sender<(PublicKey,r1package)>)]
+        Part1Fetch(Part1Fetch),
     }
 
     // Add in all the sections for the  tranport
@@ -93,7 +103,7 @@ mod frosted {
         auth_token: String,
         my_id: PublicKey,
         // Crypto bits
-        r1packages: Arc<Mutex<BTreeMap<EndpointId,r1package>>>,
+        r1packages: Arc<Mutex<BTreeMap<EndpointId, r1package>>>,
     }
 
     impl ProtocolHandler for FrostyServer {
@@ -121,7 +131,7 @@ mod frosted {
                                 .lock()
                                 .unwrap()
                                 .insert(conn.remote_id().into(), "fren".to_string());
-                            warn!("auth succeced for {:?}", conn.remote_id());
+                            // warn!("auth succeced for {:?}", conn.remote_id());
                             // warn!("{:?}", &self.peers);
                             tx.send(Ok(())).await.ok();
                         }
@@ -210,12 +220,31 @@ mod frosted {
                     tx.send(counter).await.ok();
                 }
                 FrostyMessage::Part1Send(part1) => {
-                    let WithChannels { inner, tx,  .. } = part1;
-                    info!("part 1 package from {:?} -- {:?}", id,inner.pack);
-                    self.r1packages.lock().unwrap().insert(id,inner.pack);
+                    let WithChannels { inner, tx, .. } = part1;
+                    info!("part 1 package from {:?} -- {:?}", id, inner.pack);
+                    self.r1packages.lock().unwrap().insert(id, inner.pack);
                     tx.send(()).await.ok();
                 }
-                
+                FrostyMessage::Part1Count(count) => { 
+                    let WithChannels{ tx , .. } = count;
+                    let len = self.r1packages.lock().unwrap().len();
+                    tx.send(len).await.ok();
+                }
+                FrostyMessage::Part1Fetch(part1) => {
+                    let WithChannels { tx, .. } = part1;
+                    let pack1_list: Vec<_> = self
+                        .r1packages
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .map(|(id, pack)| (id.clone(), pack.clone()))
+                        .collect();
+                    for value in pack1_list {
+                        if tx.send(value).await.is_err() {
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -251,9 +280,22 @@ mod frosted {
             self.inner.server_streaming(Peers, 10).await
         }
 
-        pub async fn round1(&self,pack1: r1package) -> Result<()> { 
-            self.inner.rpc(Part1Send{ pack: pack1 }).await.expect("bad r1 pack");
+        pub async fn round1(&self, pack1: r1package) -> Result<()> {
+            self.inner
+                .rpc(Part1Send { pack: pack1 })
+                .await
+                .expect("part1 fail");
             Ok(())
+        }
+
+        pub async fn round1_count(&self) -> Result<usize,irpc::Error> { 
+            self.inner.rpc(Part1Count {}).await
+        }
+        
+        pub async fn round1_fetch(
+            &self,
+        ) -> Result<mpsc::Receiver<(PublicKey, r1package)>, irpc::Error> {
+            self.inner.server_streaming(Part1Fetch {},10).await
         }
 
         pub async fn count(&self) -> Result<usize, irpc::Error> {
