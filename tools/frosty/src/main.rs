@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
     };
 
     // make the frosty server
-    let frosty_rpc = FrostyServer::new(token.clone(), 3,endpoint.id());
+    let frosty_rpc = FrostyServer::new(token.clone(), 3, endpoint.id());
     // create a local client
     let local_rpc = frosty_rpc.clone().local();
 
@@ -89,18 +89,18 @@ async fn main() -> Result<()> {
 
     // Kick off the process
     // Create the generator
-    let dkg = DistributedKeyGeneration::new(endpoint.clone(), local_rpc, process_client, ticket);
+    let dkg =
+        DistributedKeyGeneration::new(endpoint.clone(), local_rpc, process_client, ticket, config);
     // Spawn a new runner
     let handle = task::spawn(dkg.run());
     let _res = handle.await;
 
     // task::spawn(local(process_client,token));
-    tokio::signal::ctrl_c().await?;
+    // tokio::signal::ctrl_c().await?;
 
     let _ = router.shutdown().await;
     Ok(())
 }
-
 
 // Testing for running logic
 #[allow(dead_code)]

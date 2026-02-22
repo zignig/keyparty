@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, time::Duration};
 use tracing::{error, info, warn};
 
 use crate::{
+    config::Config,
     frostyrpc::{FrostyClient, ProcessSteps},
     ticket::FrostyTicket,
 };
@@ -20,6 +21,7 @@ use frost_ed25519::keys::dkg::{self, round1::Package as r1package};
 use frost_ed25519::{self as frost, Identifier};
 
 pub struct DistributedKeyGeneration {
+    config: Config,
     endpoint: Endpoint,
     local_rpc: FrostyClient,
     process_client: FrostyClient,
@@ -48,9 +50,11 @@ impl DistributedKeyGeneration {
         // as Server this is local , as Client is remote
         client: FrostyClient,
         ticket: FrostyTicket,
+        config: Config,
     ) -> Self {
         let my_id = endpoint.id();
         Self {
+            config: config,
             endpoint: endpoint,
             local_rpc: local_rpc,
             process_client: client,
@@ -124,11 +128,10 @@ impl DistributedKeyGeneration {
                     }
                     // Need more robust check that we have all the nodes.
                     // connect is lazy and will only connect on action
-                    self.auth_all().await?;
-
-                    // self.show_peers();
+                    let peers = self.auth_all().await?;
+                    self.config.set_peers(peers);
+                    // send some requests to be sure
                     self.booper().await?;
-
                     self.state = ProcessSteps::Part1Send;
                     continue;
                 }
@@ -271,12 +274,23 @@ impl DistributedKeyGeneration {
                         .round2_secret
                         .clone()
                         .ok_or(anyhow!("round 2 secret package broken"))?;
-                    let nearly = frost_ed25519::keys::dkg::part3(
+                    let (key_share,public_share) = frost_ed25519::keys::dkg::part3(
                         &secret_package,
                         &self.part1_map,
                         &self.round2_map_in,
-                    ).expect("part 3 build error");
-                    error!("finished key package {:#?}", nearly);
+                    )
+                    .expect("part 3 build error");
+                    println!("{:#?}",key_share);
+                    let key_share_vec = key_share.serialize().expect("bad keyshare serialization");
+                    let public_share_vec = public_share.serialize().expect("bad public serialization");
+                    let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
+                    let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
+                    ks_hex.make_ascii_lowercase();
+                    ps_hex.make_ascii_lowercase();
+                    println!("{:?}",ks_hex);
+                    self.config.set_packages(ks_hex,ps_hex);
+                    info!("It's built");
+                    
                     return Ok(());
                 }
             }
@@ -346,7 +360,8 @@ impl DistributedKeyGeneration {
     //     Ok(())
     // }
 
-    async fn auth_all(&mut self) -> Result<()> {
+    async fn auth_all(&mut self) -> Result<Vec<PublicKey>> {
+        let mut peer_list: Vec<PublicKey> = Vec::new();
         for (peer, client) in self.clients.iter() {
             // let a = client.auth(self.ticket.token.as_str()).await?;
             // warn!("{:?} -- {:?}", peer, a);
@@ -355,7 +370,10 @@ impl DistributedKeyGeneration {
             let mut exit = false;
             while !exit {
                 match client.auth(self.ticket.token.as_str()).await {
-                    Ok(_) => exit = true,
+                    Ok(_) => {
+                        peer_list.push(peer.clone());
+                        exit = true;
+                    }
                     Err(e) => {
                         error!(
                             "CONNECT fail {:?} of {:?} to {:?} with {:?} ",
@@ -369,6 +387,6 @@ impl DistributedKeyGeneration {
                 }
             }
         }
-        Ok(())
+        Ok(peer_list)
     }
 }

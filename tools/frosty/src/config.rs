@@ -7,6 +7,8 @@ pub struct Config {
     mother_ship: Option<PublicKey>,
     secret: SecretKey,
     peers: Option<Vec<PublicKey>>,
+    key_package: Option<String>,
+    public_package: Option<String>,
 }
 
 impl Config {
@@ -28,6 +30,8 @@ impl Config {
             mother_ship: None,
             secret: secret,
             peers: None,
+            key_package: None,
+            public_package: None,
         };
         config.save();
         config
@@ -39,6 +43,11 @@ impl Config {
         self.save();
     }
 
+    pub fn set_packages(&mut self, key_share: String, public_share: String) {
+        self.key_package = Some(key_share);
+        self.public_package = Some(public_share);
+        self.save();
+    }
     pub fn secret(&self) -> SecretKey {
         self.secret.clone()
     }
