@@ -19,6 +19,7 @@ mod frosted {
 
     // Key Package imports
     use frost_ed25519::keys::dkg::round1::Package as r1package;
+    use frost_ed25519::keys::dkg::round2::Package as R2Package;
 
     use iroh::{
         Endpoint, EndpointId, PublicKey,
@@ -42,6 +43,10 @@ mod frosted {
         Part1Send,
         Part1Fetch,
         Part1Check,
+        Part2Build,
+        Part2Send,
+        Part2Fetch,
+        Part3Build,
     }
 
     pub const ALPN: &[u8] = b"frosty-api/0";
@@ -71,6 +76,14 @@ mod frosted {
     #[derive(Debug, Serialize, Deserialize)]
     struct Part1Fetch;
 
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Part2Send {
+        pack: R2Package,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Part2Fetch;
+
     // Use the macro to generate both the StorageProtocol and StorageMessage enums
     // plus implement Channels for each type
     #[rpc_requests(message = FrostyMessage)]
@@ -90,6 +103,10 @@ mod frosted {
         Part1Count(Part1Count),
         #[rpc(tx=mpsc::Sender<(PublicKey,r1package)>)]
         Part1Fetch(Part1Fetch),
+        #[rpc(tx=oneshot::Sender<()>)]
+        Part2Send(Part2Send),
+        #[rpc(tx=mpsc::Sender<(PublicKey,R2Package)>)]
+        Part2Fetch(Part2Fetch),
     }
 
     // Add in all the sections for the  tranport
@@ -104,6 +121,7 @@ mod frosted {
         my_id: PublicKey,
         // Crypto bits
         r1packages: Arc<Mutex<BTreeMap<EndpointId, r1package>>>,
+        r2packages: Arc<Mutex<BTreeMap<EndpointId, R2Package>>>,
     }
 
     impl ProtocolHandler for FrostyServer {
@@ -122,7 +140,7 @@ mod frosted {
                         } else {
                             let peer_count = self.peer_count.fetch_add(1, Ordering::SeqCst);
                             if peer_count == self.max_peers {
-                                error!("MAX CLIENTS REACHED");
+                                warn!("MAX CLIENTS REACHED");
                                 // conn.close(1u32.into(), b"max_peers");
                                 // break;
                             }
@@ -163,6 +181,7 @@ mod frosted {
                 auth_token,
                 my_id: my_id,
                 r1packages: Default::default(),
+                r2packages: Default::default(),
             };
             s.peers.lock().unwrap().insert(my_id, "myself".to_string());
             s
@@ -225,8 +244,8 @@ mod frosted {
                     self.r1packages.lock().unwrap().insert(id, inner.pack);
                     tx.send(()).await.ok();
                 }
-                FrostyMessage::Part1Count(count) => { 
-                    let WithChannels{ tx , .. } = count;
+                FrostyMessage::Part1Count(count) => {
+                    let WithChannels { tx, .. } = count;
                     let len = self.r1packages.lock().unwrap().len();
                     tx.send(len).await.ok();
                 }
@@ -240,6 +259,27 @@ mod frosted {
                         .map(|(id, pack)| (id.clone(), pack.clone()))
                         .collect();
                     for value in pack1_list {
+                        if tx.send(value).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+                FrostyMessage::Part2Send(pack) => {
+                    let WithChannels { inner, tx, .. } = pack;
+                    info!("part 2 package arrives {:?}", inner.pack);
+                    self.r2packages.lock().unwrap().insert(id, inner.pack);
+                    tx.send(()).await.ok();
+                }
+                FrostyMessage::Part2Fetch(pack) => {
+                    let WithChannels { tx, .. } = pack;
+                    let pack2_list: Vec<_> = self
+                        .r2packages
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .map(|(id, pack)| (id.clone(), pack.clone()))
+                        .collect();
+                    for value in pack2_list {
                         if tx.send(value).await.is_err() {
                             break;
                         }
@@ -288,14 +328,28 @@ mod frosted {
             Ok(())
         }
 
-        pub async fn round1_count(&self) -> Result<usize,irpc::Error> { 
+        pub async fn round1_count(&self) -> Result<usize, irpc::Error> {
             self.inner.rpc(Part1Count {}).await
         }
 
         pub async fn round1_fetch(
             &self,
         ) -> Result<mpsc::Receiver<(PublicKey, r1package)>, irpc::Error> {
-            self.inner.server_streaming(Part1Fetch {},10).await
+            self.inner.server_streaming(Part1Fetch {}, 10).await
+        }
+        
+        pub async fn round2_fetch(
+            &self,
+        ) -> Result<mpsc::Receiver<(PublicKey, R2Package)>, irpc::Error> {
+            self.inner.server_streaming(Part2Fetch {}, 10).await
+        }
+
+        pub async fn round2(&self, pack2: R2Package) -> Result<()> {
+            self.inner
+                .rpc(Part2Send { pack: pack2 })
+                .await
+                .expect("part2 fail");
+            Ok(())
         }
 
         pub async fn count(&self) -> Result<usize, irpc::Error> {

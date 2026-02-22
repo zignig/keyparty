@@ -15,7 +15,8 @@ use crate::{
 };
 
 // Key gen imports
-use frost_ed25519::keys::dkg::round1::Package as r1package;
+use anyhow::anyhow;
+use frost_ed25519::keys::dkg::{self, round1::Package as r1package};
 use frost_ed25519::{self as frost, Identifier};
 
 pub struct DistributedKeyGeneration {
@@ -26,10 +27,17 @@ pub struct DistributedKeyGeneration {
     ticket: FrostyTicket,
     state: ProcessSteps,
     my_id: PublicKey,
-    // round info
+    // round 1 info
     round1: BTreeMap<PublicKey, BTreeMap<PublicKey, r1package>>,
     round1_secret: Option<frost_ed25519::keys::dkg::round1::SecretPackage>,
     round1_count: BTreeMap<PublicKey, usize>,
+    // map built for ident
+    part1_map: BTreeMap<Identifier, r1package>,
+    // round 2 info
+    round2_secret: Option<frost_ed25519::keys::dkg::round2::SecretPackage>,
+    round2_map_out: BTreeMap<PublicKey, frost_ed25519::keys::dkg::round2::Package>,
+    // round 2 mapping
+    round2_map_in: BTreeMap<Identifier, frost_ed25519::keys::dkg::round2::Package>,
 }
 
 impl DistributedKeyGeneration {
@@ -53,6 +61,10 @@ impl DistributedKeyGeneration {
             round1: Default::default(),
             round1_secret: None,
             round1_count: Default::default(),
+            part1_map: Default::default(),
+            round2_secret: None,
+            round2_map_out: Default::default(),
+            round2_map_in: Default::default(),
         }
     }
 
@@ -150,7 +162,7 @@ impl DistributedKeyGeneration {
                     while !exit {
                         for (peer, client) in self.clients.iter() {
                             let count = client.round1_count().await?;
-                            println!("{:?} -- {:?}", peer, count);
+                            // println!("{:?} -- {:?}", peer, count);
                             self.round1_count.insert(peer.clone(), count);
                         }
                         let max = self.ticket.max_shares as usize;
@@ -173,9 +185,98 @@ impl DistributedKeyGeneration {
                 // Check that all the pacakages are the same from each node
                 ProcessSteps::Part1Check => {
                     info!("Part 1 Check");
-
                     self.check_round1()?;
+                    info!("Check OK");
+                    self.state = ProcessSteps::Part2Build;
+                    continue;
+                }
+                ProcessSteps::Part2Build => {
+                    info!("Part 2 build");
+                    // Build the correct map type
+                    let mut part1_map: BTreeMap<Identifier, r1package> = Default::default();
+                    // Map identfiers to ID (conversion is painful , just save and remap)
+                    let mut id_key_map: BTreeMap<Identifier, PublicKey> = Default::default();
 
+                    // convert the map , use this local id's map
+                    // should not matter as they have been checked
+                    if let Some(map) = self.round1.get(&self.my_id) {
+                        for (id, pack) in map.iter() {
+                            let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
+                            // not well documented but don't include the round 1 package for _this_ client
+                            if *id != self.my_id {
+                                id_key_map.insert(ident.clone(), id.clone());
+                                part1_map.insert(ident, pack.clone());
+                            };
+                        }
+                        // Save this for part 3
+                        self.part1_map = part1_map.clone();
+                    }
+                    // create the second round of stuff
+                    // println!("{:#?}", &part1_map);
+                    let secret_package = self
+                        .round1_secret
+                        .clone()
+                        .ok_or(anyhow!("missing secret package"))?;
+
+                    let (round2_secret, round2_map) =
+                        frost::keys::dkg::part2(secret_package, &part1_map)
+                            .expect("part2 build failed");
+
+                    // Save the secret for round 2
+                    self.round2_secret = Some(round2_secret);
+                    // Rebuild the round2 map for public keys
+                    for (ident, pack) in round2_map.iter() {
+                        let pk = id_key_map
+                            .get(ident)
+                            .ok_or(anyhow!("missing ident key"))?
+                            .clone();
+                        self.round2_map_out.insert(pk, pack.clone());
+                    }
+                    self.state = ProcessSteps::Part2Send;
+                    continue;
+                }
+                ProcessSteps::Part2Send => {
+                    info!("Part 2 Send");
+                    for (id, pack) in self.round2_map_out.iter() {
+                        info!("part2 send {:?}", &id);
+                        let client = self
+                            .clients
+                            .get(id)
+                            .ok_or(anyhow!("missing client for pack2"))?;
+                        client.round2(pack.clone()).await?;
+                    }
+                    // Does this need a counter check , probably yes
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    self.state = ProcessSteps::Part2Fetch;
+                    continue;
+                }
+                ProcessSteps::Part2Fetch => {
+                    info!("Part 2 Fetch");
+                    // This is fetching from local as it has the section given to me
+                    // this should be more protected.
+                    self.show_peers();
+                    let mut packs = self.local_rpc.round2_fetch().await?;
+                    while let Some((id, pack2)) = packs.recv().await? {
+                        let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
+                        self.round2_map_in.insert(ident, pack2);
+                    }
+                    println!("{:?}", self.round1.keys());
+                    println!("{:?}", self.round2_map_in.keys());
+                    self.state = ProcessSteps::Part3Build;
+                    continue;
+                }
+                ProcessSteps::Part3Build => {
+                    info!("Part 3 build");
+                    let secret_package = self
+                        .round2_secret
+                        .clone()
+                        .ok_or(anyhow!("round 2 secret package broken"))?;
+                    let nearly = frost_ed25519::keys::dkg::part3(
+                        &secret_package,
+                        &self.part1_map,
+                        &self.round2_map_in,
+                    ).expect("part 3 build error");
+                    error!("finished key package {:#?}", nearly);
                     return Ok(());
                 }
             }
@@ -183,10 +284,23 @@ impl DistributedKeyGeneration {
     }
 
     fn check_round1(&self) -> Result<()> {
-        info!("check that all the round 1 packages are good");
+        info!("check that all the round 1 packages are equivilent");
         // println!("{:#?}", self.round1);
+        let mut clumped: BTreeMap<PublicKey, Vec<r1package>> = Default::default();
         for (peer, peer_map) in self.round1.iter() {
-            println!("map check {:?} -- {:?}", peer, peer_map.len());
+            // println!("map check {:?} -- {:?}", peer, peer_map.len());
+            for (key, pack) in peer_map.iter() {
+                clumped.entry(key.clone()).or_default().push(pack.clone())
+            }
+        }
+        let mut good = true;
+        for (item, v) in clumped.iter() {
+            // Check consecutive pairs against each other
+            // if false just bug out
+            if !v.windows(2).all(|w| w[0] == w[1]) {
+                error!("Round one packages bad ABORT!!!");
+                return Err(anyhow!("round 1 packages broken").into());
+            }
         }
         Ok(())
     }
@@ -195,11 +309,14 @@ impl DistributedKeyGeneration {
 
     async fn booper(&self) -> Result<()> {
         let mut counter = 0;
-        const MAX: i32 = 5;
+        const MAX: i32 = 4;
         loop {
             for (peer, client) in self.clients.iter() {
                 match client.boop().await {
-                    Ok(n) => println!("booper {:?} -- {:?}", peer, n),
+                    Ok(n) => {
+                        continue;
+                        // println!("booper {:?} -- {:?}", peer, n);
+                    }
                     Err(e) => error!("{:?} for {:?}", e, peer),
                 }
             }
@@ -207,7 +324,7 @@ impl DistributedKeyGeneration {
             if counter > MAX {
                 return Ok(());
             }
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
     }
 
