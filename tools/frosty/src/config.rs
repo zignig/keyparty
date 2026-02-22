@@ -33,6 +33,7 @@ impl Config {
         config
     }
 
+    #[allow(dead_code)]
     pub fn set_peers(&mut self, peers: Vec<PublicKey>) {
         self.peers = Some(peers);
         self.save();

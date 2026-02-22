@@ -1,10 +1,11 @@
 pub use self::frosted::ALPN;
-pub use self::frosted::{FrostyClient, FrostyServer,ProcessSteps};
+pub use self::frosted::{FrostyClient, FrostyServer, ProcessSteps};
 /// Base on irpc-iroh auth example
+/// https://github.com/n0-computer/irpc/blob/main/irpc-iroh/examples/auth.rs
 
 mod frosted {
     use tokio::task;
-    use tracing::{error, warn};
+    use tracing::{error, info, warn};
 
     use std::{
         collections::BTreeMap,
@@ -15,6 +16,10 @@ mod frosted {
     };
 
     use anyhow::Result;
+
+    // Key Package imports
+    use frost_ed25519::keys::dkg::round1::Package as r1package;
+
     use iroh::{
         Endpoint, EndpointId, PublicKey,
         endpoint::Connection,
@@ -28,12 +33,13 @@ mod frosted {
     // Import the macro
     use irpc_iroh::{IrohLazyRemoteConnection, read_request};
     use serde::{Deserialize, Serialize};
-    
-    // Enum for the signing process 
 
-    pub enum ProcessSteps { 
+    // Enum for the signing process
+
+    pub enum ProcessSteps {
         Init,
         CreateMesh,
+        Part1Send,
     }
 
     pub const ALPN: &[u8] = b"frosty-api/0";
@@ -52,6 +58,13 @@ mod frosted {
     #[derive(Debug, Serialize, Deserialize)]
     struct Boop;
 
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Part1Send { 
+        pack: r1package
+    }
+
+
+
     // Use the macro to generate both the StorageProtocol and StorageMessage enums
     // plus implement Channels for each type
     #[rpc_requests(message = FrostyMessage)]
@@ -65,6 +78,8 @@ mod frosted {
         PeerCount(PeerCount),
         #[rpc(tx=oneshot::Sender<usize>)]
         Boop(Boop),
+        #[rpc(tx=oneshot::Sender<()>)]
+        Part1Send(Part1Send),
     }
 
     // Add in all the sections for the  tranport
@@ -76,6 +91,9 @@ mod frosted {
         peer_count: Arc<AtomicUsize>,
         counter: Arc<AtomicUsize>,
         auth_token: String,
+        my_id: PublicKey,
+        // Crypto bits
+        r1packages: Arc<Mutex<BTreeMap<EndpointId,r1package>>>,
     }
 
     impl ProtocolHandler for FrostyServer {
@@ -113,7 +131,7 @@ mod frosted {
                             conn.close(1u32.into(), b"unauthed , try again");
                             break;
                         } else {
-                            self.handle_authenticated(msg).await;
+                            self.handle_authenticated(msg, conn.remote_id()).await;
                         }
                     }
                 }
@@ -125,24 +143,26 @@ mod frosted {
     }
 
     impl FrostyServer {
-        // pub const ALPN: &[u8] = ALPN;
-
         // Make a new frosty server
-        pub fn new(auth_token: String,max_peers: usize) -> Self {
-            Self {
+        pub fn new(auth_token: String, max_peers: usize, my_id: PublicKey) -> Self {
+            let s = Self {
                 max_peers: max_peers,
                 peers: Default::default(),
                 peer_count: Arc::new(AtomicUsize::new(0)),
                 counter: Arc::new(AtomicUsize::new(0)),
                 auth_token,
-            }
+                my_id: my_id,
+                r1packages: Default::default(),
+            };
+            s.peers.lock().unwrap().insert(my_id, "myself".to_string());
+            s
         }
 
         // Runner for local access
         // This is for the endpoint that is hosting the key party.
         async fn run(self, mut rx: tokio::sync::mpsc::Receiver<FrostyMessage>) {
             while let Some(msg) = rx.recv().await {
-                self.handle_authenticated(msg).await;
+                self.handle_authenticated(msg, self.my_id).await;
             }
         }
 
@@ -157,7 +177,8 @@ mod frosted {
         }
 
         // Handle mesasges that have
-        async fn handle_authenticated(&self, msg: FrostyMessage) {
+        async fn handle_authenticated(&self, msg: FrostyMessage, id: PublicKey) {
+            // info!("msg_from {:?} of {:?}",id,msg);
             match msg {
                 FrostyMessage::Auth(msg) => {
                     let WithChannels { tx, .. } = msg;
@@ -188,13 +209,20 @@ mod frosted {
                     let counter = self.counter.fetch_add(1, Ordering::SeqCst);
                     tx.send(counter).await.ok();
                 }
+                FrostyMessage::Part1Send(part1) => {
+                    let WithChannels { inner, tx,  .. } = part1;
+                    info!("part 1 package from {:?} -- {:?}", id,inner.pack);
+                    self.r1packages.lock().unwrap().insert(id,inner.pack);
+                    tx.send(()).await.ok();
+                }
+                
             }
         }
     }
 
-    #[derive(Debug,Clone)]
+    #[derive(Debug, Clone)]
     pub struct FrostyClient {
-        is_local : bool,
+        is_local: bool,
         inner: Client<FrostyProtocol>,
     }
 
@@ -223,6 +251,11 @@ mod frosted {
             self.inner.server_streaming(Peers, 10).await
         }
 
+        pub async fn round1(&self,pack1: r1package) -> Result<()> { 
+            self.inner.rpc(Part1Send{ pack: pack1 }).await.expect("bad r1 pack");
+            Ok(())
+        }
+
         pub async fn count(&self) -> Result<usize, irpc::Error> {
             self.inner.rpc(PeerCount {}).await
         }
@@ -231,7 +264,7 @@ mod frosted {
             self.inner.rpc(Boop {}).await
         }
 
-        pub fn local(&self) -> bool { 
+        pub fn local(&self) -> bool {
             self.is_local
         }
     }

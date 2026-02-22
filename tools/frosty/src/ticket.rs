@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 pub struct FrostyTicket {
     pub addr: EndpointId,
     pub token: String,
-    pub max_shares: usize,
-    pub min_shares: usize,
+    pub max_shares: u16,
+    pub min_shares: u16,
 }
 
 impl Ticket for FrostyTicket {
@@ -26,7 +26,7 @@ impl Ticket for FrostyTicket {
 }
 
 impl FrostyTicket {
-    pub fn new(addr: EndpointId, token: String, max_shares: usize, min_shares: usize) -> Self {
+    pub fn new(addr: EndpointId, token: String, max_shares: u16, min_shares: u16) -> Self {
         Self {
             addr,
             token,

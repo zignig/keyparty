@@ -7,7 +7,7 @@ use iroh::{Endpoint, EndpointId, PublicKey};
 use iroh_tickets::Ticket;
 use n0_error::Result;
 use tokio::task;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 mod cli;
 mod config;
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
     };
 
     // make the frosty server
-    let frosty_rpc = FrostyServer::new(token.clone(), 3);
+    let frosty_rpc = FrostyServer::new(token.clone(), 3,endpoint.id());
     // create a local client
     let local_rpc = frosty_rpc.clone().local();
 
@@ -71,14 +71,14 @@ async fn main() -> Result<()> {
     // create the process based on the mode
     let (process_client, ticket) = match args.command {
         cli::Command::Server { token } => {
-            let ticket = FrostyTicket::new(endpoint.id(), token.clone(), 3, 1);
+            let ticket = FrostyTicket::new(endpoint.id(), token.clone(), 3, 2);
             let val = ticket.serialize();
             println!("----------");
             println!("{}", val);
             println!("----------");
             let bork = FrostyTicket::deserialize(val.as_str())?;
             println!("{:#?}", bork);
-            (local_rpc, ticket)
+            (local_rpc.clone(), ticket)
         }
         cli::Command::Client { ticket } => {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
@@ -89,8 +89,7 @@ async fn main() -> Result<()> {
 
     // Kick off the process
     // Create the generator
-    let dkg =
-        DistributedKeyGeneration::new(endpoint.clone(), process_client, ticket, endpoint.id());
+    let dkg = DistributedKeyGeneration::new(endpoint.clone(), local_rpc, process_client, ticket);
     // Spawn a new runner
     let handle = task::spawn(dkg.run());
     let _res = handle.await;
@@ -102,28 +101,9 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-// // local client test
-// async fn local(client: FrostyClient, auth: String) -> Result<()> {
-//     warn!("Start the local client");
-//     let _ = client.auth(auth.as_str()).await?;
-//     loop {
-//         let count = client.count().await?;
-//         warn!("peer count {:?}", count);
-//         if count == 3 {
-//             break;
-//         }
-//         tokio::time::sleep(Duration::from_secs(1)).await;
-//     }
-//     let mut peers = client.peers().await?;
-//     while let Some(peer) = peers.recv().await? {
-//         info!("local peer item {:?}", peer)
-//     }
-//     warn!("start the process");
-//     Ok(())
-// }
 
 // Testing for running logic
-
+#[allow(dead_code)]
 async fn test_rpc(endpoint: Endpoint, ticket: FrostyTicket, mut config: Config) -> Result<()> {
     let client = FrostyClient::connect(endpoint.clone(), ticket.addr);
 
@@ -138,7 +118,7 @@ async fn test_rpc(endpoint: Endpoint, ticket: FrostyTicket, mut config: Config) 
     loop {
         let count = client.count().await?;
         println!("{}", count);
-        if count == ticket.max_shares {
+        if count == ticket.max_shares as usize {
             println!("needed clients");
             break;
         }
