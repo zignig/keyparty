@@ -1,15 +1,21 @@
 use clap_derive::Parser;
 
-
-#[derive(Parser,Debug)]
-pub struct Args { 
+#[derive(Parser, Debug)]
+pub struct Args {
     #[clap(subcommand)]
-    pub command: Command 
+    pub command: Command,
 }
 
-#[derive(Parser,Debug)]
-pub enum Command { 
-    Server { token : String },
-    Client { ticket : String }
+#[derive(Parser, Debug)]
+pub enum Command {
+    Server {
+        token: String,
+        #[arg(long, default_value_t = 3)]
+        max: u16,
+        #[arg(long, default_value_t = 2)]
+        min: u16,
+    },
+    Client {
+        ticket: String,
+    },
 }
-

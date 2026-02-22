@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    println!("{:#?}", args);
+    // println!("{:#?}", args);
 
     let (config, endpoint) = match Config::load() {
         Ok(config) => {
@@ -45,22 +45,26 @@ async fn main() -> Result<()> {
             (config, endpoint)
         }
     };
+
+    // get online
     let _ = endpoint.online().await;
 
-    info!("{:#?}", config);
+    // info!("{:#?}", config);
     info!("{}", &endpoint.id());
 
     // set up the rpc
-    let token = match args.command {
-        cli::Command::Server { ref token } => token.clone(),
+
+    let (token,max) = match args.command {
+        cli::Command::Server { ref token ,max , .. } => (token.clone(),max),
         cli::Command::Client { ref ticket } => {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
-            ticket.token.clone()
+            (ticket.token.clone(),ticket.max_shares)
         }
     };
 
     // make the frosty server
-    let frosty_rpc = FrostyServer::new(token.clone(), 3, endpoint.id());
+    let frosty_rpc = FrostyServer::new(token.clone(), max as usize, endpoint.id());
+
     // create a local client
     let local_rpc = frosty_rpc.clone().local();
 
@@ -70,8 +74,8 @@ async fn main() -> Result<()> {
 
     // create the process based on the mode
     let (process_client, ticket) = match args.command {
-        cli::Command::Server { token } => {
-            let ticket = FrostyTicket::new(endpoint.id(), token.clone(), 3, 2);
+        cli::Command::Server { token , max , min } => {
+            let ticket = FrostyTicket::new(endpoint.id(), token.clone(), max, min);
             let val = ticket.serialize();
             println!("----------");
             println!("{}", val);
@@ -95,90 +99,8 @@ async fn main() -> Result<()> {
     let handle = task::spawn(dkg.run());
     let _res = handle.await;
 
-    // task::spawn(local(process_client,token));
     // tokio::signal::ctrl_c().await?;
 
     let _ = router.shutdown().await;
     Ok(())
-}
-
-// Testing for running logic
-#[allow(dead_code)]
-async fn test_rpc(endpoint: Endpoint, ticket: FrostyTicket, mut config: Config) -> Result<()> {
-    let client = FrostyClient::connect(endpoint.clone(), ticket.addr);
-
-    let _ = client.auth(ticket.token.as_str()).await?;
-
-    let count = client.count().await?;
-    println!("count of clients {}", count);
-
-    let mut loop_count = 0;
-
-    tokio::pin!(client);
-    loop {
-        let count = client.count().await?;
-        println!("{}", count);
-        if count == ticket.max_shares as usize {
-            println!("needed clients");
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        loop_count += 1;
-        if loop_count > 500 {
-            break;
-        }
-    }
-    // Get the peer list
-    let mut peer_list: Vec<PublicKey> = Vec::new();
-    let mut peers = client.peers().await?;
-    while let Some(peer) = peers.recv().await? {
-        // warn!("peer id {peer:?}");
-        peer_list.push(peer);
-    }
-    // println!("{:?}", &peer_list);
-    config.set_peers(peer_list.clone());
-
-    let my_id = endpoint.id();
-    // strip out my own key
-    peer_list.retain(|&key| key != my_id);
-
-    // collect the clients
-    let mut clients: Vec<(EndpointId, FrostyClient)> = Vec::new();
-
-    for peer in peer_list {
-        let client = FrostyClient::connect(endpoint.clone(), peer);
-        match client.auth(ticket.token.as_str()).await {
-            Ok(()) => {
-                info!("connection for {:?} worked", peer);
-                clients.push((peer, client));
-            }
-            Err(e) => {
-                error!("connection for {:?} failed with {:?}", peer, e);
-                error!("{:?}", ticket)
-            }
-        }
-    }
-    // println!("{:?}", clients);
-    // this is sync so it will stop if any of the nodes fail
-    tokio::pin!(clients);
-    let mut fail_count = 0;
-    const MAX_FAIL: i32 = 5;
-    loop {
-        for i in clients.iter() {
-            match i.1.boop().await {
-                Ok(v) => println!("{:?} -- {:?}", i.0, v),
-                Err(e) => {
-                    error!("boop {:?} failed {:?} with {:?}", i.0, fail_count, e);
-                    fail_count += 1;
-                    if fail_count >= MAX_FAIL {
-                        return Ok(());
-                    }
-                    // try to reauth
-                    // let _ = i.1.auth(ticket.token.as_str()).await;
-                }
-            }
-        }
-        println!("-");
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
 }

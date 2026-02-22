@@ -7,7 +7,7 @@
 use iroh::{Endpoint, PublicKey};
 use n0_error::Result;
 use std::{collections::BTreeMap, time::Duration};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::{
     config::Config,
@@ -17,7 +17,7 @@ use crate::{
 
 // Key gen imports
 use anyhow::anyhow;
-use frost_ed25519::keys::dkg::{self, round1::Package as r1package};
+use frost_ed25519::keys::dkg::{round1::Package as r1package};
 use frost_ed25519::{self as frost, Identifier};
 
 pub struct DistributedKeyGeneration {
@@ -120,7 +120,7 @@ impl DistributedKeyGeneration {
                     // Add this node
                     self.clients.insert(self.my_id, self.local_rpc.clone());
                     while let Some(peer) = peers.recv().await? {
-                        info!("peers {:?}", peer);
+                        // info!("peers {:?}", peer);
                         if peer != self.my_id {
                             self.clients
                                 .insert(peer, FrostyClient::connect(self.endpoint.clone(), peer));
@@ -130,7 +130,7 @@ impl DistributedKeyGeneration {
                     // connect is lazy and will only connect on action
                     let peers = self.auth_all().await?;
                     self.config.set_peers(peers);
-                    // send some requests to be sure
+                    // some requests to be sure
                     self.booper().await?;
                     self.state = ProcessSteps::Part1Send;
                     continue;
@@ -153,7 +153,7 @@ impl DistributedKeyGeneration {
                     // TODO , can this loop across all client be put into a function ?
                     for (peer, client) in self.clients.iter() {
                         let _ = client.round1(round1_package.clone()).await?;
-                        warn!("send round1 package to {:?}", peer);
+                        // warn!("send round1 package to {:?}", peer);
                     }
                     self.state = ProcessSteps::Part1Fetch;
                     continue;
@@ -241,7 +241,7 @@ impl DistributedKeyGeneration {
                 ProcessSteps::Part2Send => {
                     info!("Part 2 Send");
                     for (id, pack) in self.round2_map_out.iter() {
-                        info!("part2 send {:?}", &id);
+                        // info!("part2 send {:?}", &id);
                         let client = self
                             .clients
                             .get(id)
@@ -257,14 +257,14 @@ impl DistributedKeyGeneration {
                     info!("Part 2 Fetch");
                     // This is fetching from local as it has the section given to me
                     // this should be more protected.
-                    self.show_peers();
+                    // self.show_peers();
                     let mut packs = self.local_rpc.round2_fetch().await?;
                     while let Some((id, pack2)) = packs.recv().await? {
                         let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
                         self.round2_map_in.insert(ident, pack2);
                     }
-                    println!("{:?}", self.round1.keys());
-                    println!("{:?}", self.round2_map_in.keys());
+                    // println!("{:?}", self.round1.keys());
+                    // println!("{:?}", self.round2_map_in.keys());
                     self.state = ProcessSteps::Part3Build;
                     continue;
                 }
@@ -280,15 +280,21 @@ impl DistributedKeyGeneration {
                         &self.round2_map_in,
                     )
                     .expect("part 3 build error");
-                    // println!("{:#?}",key_share);
+                    
+                    // Prepare for saving
                     let key_share_vec = key_share.serialize().expect("bad keyshare serialization");
                     let public_share_vec = public_share.serialize().expect("bad public serialization");
+                    let verifying_vec = public_share.verifying_key().serialize().expect("bad verifying key");
+
                     let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
                     let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
+                    let mut vk_hex = data_encoding::BASE32HEX_NOPAD.encode(&verifying_vec);
+
                     ks_hex.make_ascii_lowercase();
                     ps_hex.make_ascii_lowercase();
-                    // println!("{:?}",ks_hex);
-                    self.config.set_packages(ks_hex,ps_hex);
+                    vk_hex.make_ascii_lowercase();
+
+                    self.config.set_packages(ks_hex,ps_hex,vk_hex);
                     info!("It's built");
                     
                     return Ok(());
@@ -301,14 +307,13 @@ impl DistributedKeyGeneration {
         info!("check that all the round 1 packages are equivilent");
         // println!("{:#?}", self.round1);
         let mut clumped: BTreeMap<PublicKey, Vec<r1package>> = Default::default();
-        for (peer, peer_map) in self.round1.iter() {
+        for (_, peer_map) in self.round1.iter() {
             // println!("map check {:?} -- {:?}", peer, peer_map.len());
             for (key, pack) in peer_map.iter() {
                 clumped.entry(key.clone()).or_default().push(pack.clone())
             }
         }
-        let mut good = true;
-        for (item, v) in clumped.iter() {
+        for (_, v) in clumped.iter() {
             // Check consecutive pairs against each other
             // if false just bug out
             if !v.windows(2).all(|w| w[0] == w[1]) {
@@ -327,7 +332,7 @@ impl DistributedKeyGeneration {
         loop {
             for (peer, client) in self.clients.iter() {
                 match client.boop().await {
-                    Ok(n) => {
+                    Ok(_) => {
                         continue;
                         // println!("booper {:?} -- {:?}", peer, n);
                     }

@@ -5,7 +5,7 @@ pub use self::frosted::{FrostyClient, FrostyServer, ProcessSteps};
 
 mod frosted {
     use tokio::task;
-    use tracing::{error, info, warn};
+    use tracing::warn;
 
     use std::{
         collections::BTreeMap,
@@ -266,7 +266,7 @@ mod frosted {
                 }
                 FrostyMessage::Part2Send(pack) => {
                     let WithChannels { inner, tx, .. } = pack;
-                    info!("part 2 package arrives {:?}", inner.pack);
+                    // info!("part 2 package arrives {:?}", inner.pack);
                     self.r2packages.lock().unwrap().insert(id, inner.pack);
                     tx.send(()).await.ok();
                 }
@@ -337,7 +337,7 @@ mod frosted {
         ) -> Result<mpsc::Receiver<(PublicKey, r1package)>, irpc::Error> {
             self.inner.server_streaming(Part1Fetch {}, 10).await
         }
-        
+
         pub async fn round2_fetch(
             &self,
         ) -> Result<mpsc::Receiver<(PublicKey, R2Package)>, irpc::Error> {

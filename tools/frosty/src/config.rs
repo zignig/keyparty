@@ -9,6 +9,7 @@ pub struct Config {
     peers: Option<Vec<PublicKey>>,
     key_package: Option<String>,
     public_package: Option<String>,
+    verify_key: Option<String>,
 }
 
 impl Config {
@@ -32,6 +33,7 @@ impl Config {
             peers: None,
             key_package: None,
             public_package: None,
+            verify_key: None
         };
         config.save();
         config
@@ -43,9 +45,10 @@ impl Config {
         self.save();
     }
 
-    pub fn set_packages(&mut self, key_share: String, public_share: String) {
+    pub fn set_packages(&mut self, key_share: String, public_share: String, verify_key: String) {
         self.key_package = Some(key_share);
         self.public_package = Some(public_share);
+        self.verify_key = Some(verify_key);
         self.save();
     }
     pub fn secret(&self) -> SecretKey {
