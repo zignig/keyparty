@@ -17,7 +17,7 @@ use crate::{
 
 // Key gen imports
 use anyhow::anyhow;
-use frost_ed25519::keys::dkg::{round1::Package as r1package};
+use frost_ed25519::keys::dkg::round1::Package as r1package;
 use frost_ed25519::{self as frost, Identifier};
 
 pub struct DistributedKeyGeneration {
@@ -101,7 +101,7 @@ impl DistributedKeyGeneration {
                     loop {
                         let count = self.process_client.count().await?;
                         if count != client_counter {
-                            info!(" new peer {:?}/{:?}", count, self.ticket.max_shares);
+                            info!("New client {:?}/{:?}", count, self.ticket.max_shares);
                             if count == self.ticket.max_shares as usize {
                                 break;
                             }
@@ -274,17 +274,21 @@ impl DistributedKeyGeneration {
                         .round2_secret
                         .clone()
                         .ok_or(anyhow!("round 2 secret package broken"))?;
-                    let (key_share,public_share) = frost_ed25519::keys::dkg::part3(
+                    let (key_share, public_share) = frost_ed25519::keys::dkg::part3(
                         &secret_package,
                         &self.part1_map,
                         &self.round2_map_in,
                     )
                     .expect("part 3 build error");
-                    
+
                     // Prepare for saving
                     let key_share_vec = key_share.serialize().expect("bad keyshare serialization");
-                    let public_share_vec = public_share.serialize().expect("bad public serialization");
-                    let verifying_vec = public_share.verifying_key().serialize().expect("bad verifying key");
+                    let public_share_vec =
+                        public_share.serialize().expect("bad public serialization");
+                    let verifying_vec = public_share
+                        .verifying_key()
+                        .serialize()
+                        .expect("bad verifying key");
 
                     let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
                     let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
@@ -294,9 +298,8 @@ impl DistributedKeyGeneration {
                     ps_hex.make_ascii_lowercase();
                     vk_hex.make_ascii_lowercase();
 
-                    self.config.set_packages(ks_hex,ps_hex,vk_hex);
-                    info!("It's built");
-                    
+                    self.config.set_packages(ks_hex, ps_hex, vk_hex);
+                    info!("See file {:?}", Config::FILE_NAME);
                     return Ok(());
                 }
             }

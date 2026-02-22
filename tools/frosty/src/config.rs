@@ -13,7 +13,7 @@ pub struct Config {
 }
 
 impl Config {
-    const FILE_NAME: &str = "frosty.toml";
+    pub const FILE_NAME: &str = "frosty.toml";
     pub fn load() -> Result<Config, AnyError> {
         let content = std::fs::read_to_string(Config::FILE_NAME)?;
         let content = content.as_str();

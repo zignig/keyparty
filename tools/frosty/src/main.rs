@@ -18,13 +18,22 @@ use config::Config;
 use frostyrpc::FrostyServer;
 use process::DistributedKeyGeneration;
 
+use tracing_subscriber::filter::{LevelFilter, Targets};
+use tracing_subscriber::prelude::*;
+
 use crate::{frostyrpc::FrostyClient, ticket::FrostyTicket};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
-
     let args = Args::parse();
+    let mut filter = Targets::new().with_target("frosty", LevelFilter::DEBUG);
+    if args.verbose {
+        filter = filter.with_target("iroh", LevelFilter::INFO);
+    };
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
+        .init();
 
     // println!("{:#?}", args);
 
