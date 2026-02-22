@@ -151,7 +151,7 @@ impl DistributedKeyGeneration {
 
                     // The round 1 package gets sent to everyone
                     // TODO , can this loop across all client be put into a function ?
-                    for (peer, client) in self.clients.iter() {
+                    for (_, client) in self.clients.iter() {
                         let _ = client.round1(round1_package.clone()).await?;
                         // warn!("send round1 package to {:?}", peer);
                     }

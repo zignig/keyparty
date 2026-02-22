@@ -1,9 +1,7 @@
 // Frosty generator
 
-use std::time::Duration;
-
 use clap::Parser;
-use iroh::{Endpoint, EndpointId, PublicKey};
+use iroh::Endpoint;
 use iroh_tickets::Ticket;
 use n0_error::Result;
 use tokio::task;
@@ -54,11 +52,11 @@ async fn main() -> Result<()> {
 
     // set up the rpc
 
-    let (token,max) = match args.command {
-        cli::Command::Server { ref token ,max , .. } => (token.clone(),max),
+    let (token, max) = match args.command {
+        cli::Command::Server { ref token, max, .. } => (token.clone(), max),
         cli::Command::Client { ref ticket } => {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
-            (ticket.token.clone(),ticket.max_shares)
+            (ticket.token.clone(), ticket.max_shares)
         }
     };
 
@@ -74,12 +72,12 @@ async fn main() -> Result<()> {
 
     // create the process based on the mode
     let (process_client, ticket) = match args.command {
-        cli::Command::Server { token , max , min } => {
+        cli::Command::Server { token, max, min } => {
             let ticket = FrostyTicket::new(endpoint.id(), token.clone(), max, min);
             let val = ticket.serialize();
-            println!("----------");
+            println!("---| Ticket for client |---");
             println!("{}", val);
-            println!("----------");
+            println!("---------------------------");
             let bork = FrostyTicket::deserialize(val.as_str())?;
             println!("{:#?}", bork);
             (local_rpc.clone(), ticket)
