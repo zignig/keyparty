@@ -6,7 +6,6 @@
 
 use iroh::{Endpoint, PublicKey};
 use n0_error::Result;
-use rand::rng;
 use std::{collections::BTreeMap, time::Duration};
 use tracing::{error, info, warn};
 
@@ -67,8 +66,22 @@ impl DistributedKeyGeneration {
                     let mut client_counter = 1;
                     info!("Start the local client");
                     info!("Need {:?} clients", self.ticket.max_shares);
-                    let res = self.process_client.auth(self.ticket.token.as_str()).await;
-                    println!("RESULT: {:?}", res);
+                    // need to make sure that this connection is robust ( try  more than once )
+                    let mut count = 0;
+                    const MAX_FAIL: i32 = 5;
+                    let mut exit = false;
+                    while !exit {
+                        match self.process_client.auth(self.ticket.token.as_str()).await {
+                            Ok(_) => exit = true,
+                            Err(e) => {
+                                error!("CONNECT fail {:?} of {:?} with {:?} ", count, MAX_FAIL, e);
+                                count += 1;
+                                if count == MAX_FAIL {
+                                    return Err(e.into());
+                                }
+                            }
+                        }
+                    }
                     loop {
                         let count = self.process_client.count().await?;
                         if count != client_counter {
@@ -80,7 +93,6 @@ impl DistributedKeyGeneration {
                         }
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
-                    tokio::time::sleep(Duration::from_secs(1)).await;
                     info!("start the process");
                     self.state = ProcessSteps::CreateMesh;
                     continue;
@@ -98,12 +110,11 @@ impl DistributedKeyGeneration {
                                 .insert(peer, FrostyClient::connect(self.endpoint.clone(), peer));
                         };
                     }
-
                     // Need more robust check that we have all the nodes.
-                    self.show_peers();
-
+                    // connect is lazy and will only connect on action
                     self.auth_all().await?;
 
+                    // self.show_peers();
                     self.booper().await?;
 
                     self.state = ProcessSteps::Part1Send;
@@ -172,7 +183,11 @@ impl DistributedKeyGeneration {
     }
 
     fn check_round1(&self) -> Result<()> {
-        println!("{:#?}", self.round1);
+        info!("check that all the round 1 packages are good");
+        // println!("{:#?}", self.round1);
+        for (peer, peer_map) in self.round1.iter() {
+            println!("map check {:?} -- {:?}", peer, peer_map.len());
+        }
         Ok(())
     }
 
@@ -180,7 +195,7 @@ impl DistributedKeyGeneration {
 
     async fn booper(&self) -> Result<()> {
         let mut counter = 0;
-        const MAX: i32 = 2;
+        const MAX: i32 = 5;
         loop {
             for (peer, client) in self.clients.iter() {
                 match client.boop().await {
@@ -192,10 +207,11 @@ impl DistributedKeyGeneration {
             if counter > MAX {
                 return Ok(());
             }
-            tokio::time::sleep(Duration::from_millis(150)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
 
+    #[allow(dead_code)]
     fn show_peers(&self) {
         println!("Self {:?}", self.my_id);
         println!("______________________________");
@@ -215,8 +231,26 @@ impl DistributedKeyGeneration {
 
     async fn auth_all(&mut self) -> Result<()> {
         for (peer, client) in self.clients.iter() {
-            let a = client.auth(self.ticket.token.as_str()).await?;
-            warn!("{:?} -- {:?}", peer, a);
+            // let a = client.auth(self.ticket.token.as_str()).await?;
+            // warn!("{:?} -- {:?}", peer, a);
+            let mut count = 0;
+            const MAX_FAIL: i32 = 5;
+            let mut exit = false;
+            while !exit {
+                match client.auth(self.ticket.token.as_str()).await {
+                    Ok(_) => exit = true,
+                    Err(e) => {
+                        error!(
+                            "CONNECT fail {:?} of {:?} to {:?} with {:?} ",
+                            count, MAX_FAIL, peer, e
+                        );
+                        count += 1;
+                        if count == MAX_FAIL {
+                            return Err(e.into());
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }

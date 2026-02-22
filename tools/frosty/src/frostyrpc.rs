@@ -221,7 +221,7 @@ mod frosted {
                 }
                 FrostyMessage::Part1Send(part1) => {
                     let WithChannels { inner, tx, .. } = part1;
-                    info!("part 1 package from {:?} -- {:?}", id, inner.pack);
+                    // info!("part 1 package from {:?} -- {:?}", id, inner.pack);
                     self.r1packages.lock().unwrap().insert(id, inner.pack);
                     tx.send(()).await.ok();
                 }
@@ -291,7 +291,7 @@ mod frosted {
         pub async fn round1_count(&self) -> Result<usize,irpc::Error> { 
             self.inner.rpc(Part1Count {}).await
         }
-        
+
         pub async fn round1_fetch(
             &self,
         ) -> Result<mpsc::Receiver<(PublicKey, r1package)>, irpc::Error> {
