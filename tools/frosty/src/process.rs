@@ -254,8 +254,13 @@ impl DistributedKeyGeneration {
                 ProcessSteps::Part2Fetch => {
                     info!("Part 2 Fetch");
                     // Does this need a counter check , probably yes
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-
+                    // TODO fix this
+                    let mut exit = false;
+                    while !exit {
+                        // check that there are max - 1 round 2 packages
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        exit = true;
+                    }
                     // This is fetching from local as it has the section given to this node
                     let mut packs = self.local_rpc.round2_fetch().await?;
                     while let Some((id, pack2)) = packs.recv().await?.transpose()? {
