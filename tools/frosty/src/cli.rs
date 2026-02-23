@@ -4,8 +4,8 @@ use clap_derive::Parser;
 pub struct Args {
     #[clap(subcommand)]
     pub command: Command,
-    #[arg(short, long)]
-    pub verbose: bool,
+    #[arg(short, action = clap::ArgAction::Count, global = true)]
+    pub verbose: u8,
 }
 
 #[derive(Parser, Debug)]

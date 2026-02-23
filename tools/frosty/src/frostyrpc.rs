@@ -5,7 +5,7 @@ pub use self::frosted::{FrostyClient, FrostyServer, ProcessSteps};
 
 mod frosted {
     use tokio::task;
-    use tracing::warn;
+    use tracing::{error, warn};
 
     use std::{
         collections::BTreeMap,
@@ -105,7 +105,7 @@ mod frosted {
         Part1Fetch(Part1Fetch),
         #[rpc(tx=oneshot::Sender<()>)]
         Part2Send(Part2Send),
-        #[rpc(tx=mpsc::Sender<(PublicKey,R2Package)>)]
+        #[rpc(tx=mpsc::Sender<Result<(PublicKey,R2Package),String>>)]
         Part2Fetch(Part2Fetch),
     }
 
@@ -270,8 +270,15 @@ mod frosted {
                     self.r2packages.lock().unwrap().insert(id, inner.pack);
                     tx.send(()).await.ok();
                 }
+                // this is RPC but only accessed from the local
+                // second round packs are sensitive
                 FrostyMessage::Part2Fetch(pack) => {
                     let WithChannels { tx, .. } = pack;
+                    if id != self.my_id {
+                        error!("can't access remotely");
+                        tx.send(Err("can't".into())).await.expect("Broken");
+                    }
+
                     let pack2_list: Vec<_> = self
                         .r2packages
                         .lock()
@@ -280,7 +287,7 @@ mod frosted {
                         .map(|(id, pack)| (id.clone(), pack.clone()))
                         .collect();
                     for value in pack2_list {
-                        if tx.send(value).await.is_err() {
+                        if tx.send(Ok(value)).await.is_err() {
                             break;
                         }
                     }
@@ -340,7 +347,7 @@ mod frosted {
 
         pub async fn round2_fetch(
             &self,
-        ) -> Result<mpsc::Receiver<(PublicKey, R2Package)>, irpc::Error> {
+        ) -> Result<mpsc::Receiver<Result<(PublicKey, R2Package), String>>, irpc::Error> {
             self.inner.server_streaming(Part2Fetch {}, 10).await
         }
 

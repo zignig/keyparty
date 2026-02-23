@@ -259,7 +259,7 @@ impl DistributedKeyGeneration {
                     // this should be more protected.
                     // self.show_peers();
                     let mut packs = self.local_rpc.round2_fetch().await?;
-                    while let Some((id, pack2)) = packs.recv().await? {
+                    while let Some((id, pack2)) = packs.recv().await?.transpose()? {
                         let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
                         self.round2_map_in.insert(ident, pack2);
                     }
@@ -292,7 +292,7 @@ impl DistributedKeyGeneration {
 
                     let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
                     let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
-                    let mut vk_hex = data_encoding::BASE32HEX_NOPAD.encode(&verifying_vec);
+                    let mut vk_hex = data_encoding::BASE32_NOPAD.encode(&verifying_vec);
 
                     ks_hex.make_ascii_lowercase();
                     ps_hex.make_ascii_lowercase();

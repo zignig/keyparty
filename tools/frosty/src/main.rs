@@ -26,17 +26,26 @@ use crate::{frostyrpc::FrostyClient, ticket::FrostyTicket};
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let mut filter = Targets::new().with_target("frosty", LevelFilter::DEBUG);
-    if args.verbose {
-        filter = filter.with_target("iroh", LevelFilter::INFO);
+    let mut filter = Targets::new();
+    match args.verbose {
+        0 => filter = filter.with_target("frosty", LevelFilter::INFO),
+        1 => {
+            filter = filter
+                .with_target("frosty", LevelFilter::DEBUG)
+        },
+        2 => {
+            filter = filter
+                .with_target("iroh", LevelFilter::DEBUG)
+                .with_target("frosty", LevelFilter::DEBUG)
+        },
+        _ => {},
     };
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
         .init();
 
-    // println!("{:#?}", args);
-
+    
     let (config, endpoint) = match Config::load() {
         Ok(config) => {
             let endpoint = Endpoint::builder()
@@ -55,8 +64,7 @@ async fn main() -> Result<()> {
 
     // get online
     let _ = endpoint.online().await;
-
-    // info!("{:#?}", config);
+    println!("{:#?}",args);
     info!("{}", &endpoint.id());
 
     // set up the rpc
@@ -84,9 +92,7 @@ async fn main() -> Result<()> {
         cli::Command::Server { token, max, min } => {
             let ticket = FrostyTicket::new(endpoint.id(), token.clone(), max, min);
             let val = ticket.serialize();
-            println!("---| Ticket for client |---");
-            println!("{}", val);
-            println!("---------------------------");
+            println!("Ticket to share: {}", val);
             let bork = FrostyTicket::deserialize(val.as_str())?;
             println!("{:#?}", bork);
             (local_rpc.clone(), ticket)
