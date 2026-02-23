@@ -40,12 +40,14 @@ async fn main() -> Result<()> {
         },
         _ => {},
     };
+
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
         .init();
 
-    
+    // TODO split into key party and signing party
+
     let (config, endpoint) = match Config::load() {
         Ok(config) => {
             let endpoint = Endpoint::builder()
@@ -83,6 +85,7 @@ async fn main() -> Result<()> {
     // create a local client
     let local_rpc = frosty_rpc.clone().local();
 
+    // spawn the router
     let router = iroh::protocol::RouterBuilder::new(endpoint.clone())
         .accept(frostyrpc::ALPN, frosty_rpc)
         .spawn();

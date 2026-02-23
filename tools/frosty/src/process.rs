@@ -248,16 +248,15 @@ impl DistributedKeyGeneration {
                             .ok_or(anyhow!("missing client for pack2"))?;
                         client.round2(pack.clone()).await?;
                     }
-                    // Does this need a counter check , probably yes
-                    tokio::time::sleep(Duration::from_secs(1)).await;
                     self.state = ProcessSteps::Part2Fetch;
                     continue;
                 }
                 ProcessSteps::Part2Fetch => {
                     info!("Part 2 Fetch");
-                    // This is fetching from local as it has the section given to me
-                    // this should be more protected.
-                    // self.show_peers();
+                    // Does this need a counter check , probably yes
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+
+                    // This is fetching from local as it has the section given to this node
                     let mut packs = self.local_rpc.round2_fetch().await?;
                     while let Some((id, pack2)) = packs.recv().await?.transpose()? {
                         let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
@@ -300,11 +299,11 @@ impl DistributedKeyGeneration {
                     info!("See file {:?}", Config::FILE_NAME);
                     self.state = ProcessSteps::Finish;
                     continue;
-                },
-                ProcessSteps::Finish =>{
+                }
+                ProcessSteps::Finish => {
                     info!("Finishing key build");
                     return Ok(());
-                 }
+                }
             }
         }
     }
