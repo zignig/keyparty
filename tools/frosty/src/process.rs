@@ -298,8 +298,13 @@ impl DistributedKeyGeneration {
 
                     self.config.set_packages(ks_hex, ps_hex, vk_hex);
                     info!("See file {:?}", Config::FILE_NAME);
+                    self.state = ProcessSteps::Finish;
+                    continue;
+                },
+                ProcessSteps::Finish =>{
+                    info!("Finishing key build");
                     return Ok(());
-                }
+                 }
             }
         }
     }

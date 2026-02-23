@@ -47,6 +47,7 @@ mod frosted {
         Part2Send,
         Part2Fetch,
         Part3Build,
+        Finish,
     }
 
     pub const ALPN: &[u8] = b"frosty-api/0";
@@ -207,7 +208,7 @@ mod frosted {
 
         // Handle mesasges that have
         async fn handle_authenticated(&self, msg: FrostyMessage, id: PublicKey) {
-            debug!("msg_from {:?} of {:?}",id,msg);
+            debug!("msg_from {:?} of {:?}", id, msg);
             match msg {
                 FrostyMessage::Auth(msg) => {
                     let WithChannels { tx, .. } = msg;
