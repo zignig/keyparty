@@ -7,7 +7,7 @@
 use iroh::{Endpoint, PublicKey};
 use n0_error::Result;
 use std::{collections::BTreeMap, time::Duration};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::{
     config::Config,
@@ -120,7 +120,7 @@ impl DistributedKeyGeneration {
                     // Add this node
                     self.clients.insert(self.my_id, self.local_rpc.clone());
                     while let Some(peer) = peers.recv().await? {
-                        // info!("peers {:?}", peer);
+                        debug!("peers {:?}", peer);
                         if peer != self.my_id {
                             self.clients
                                 .insert(peer, FrostyClient::connect(self.endpoint.clone(), peer));
@@ -151,9 +151,9 @@ impl DistributedKeyGeneration {
 
                     // The round 1 package gets sent to everyone
                     // TODO , can this loop across all client be put into a function ?
-                    for (_, client) in self.clients.iter() {
+                    for (peer, client) in self.clients.iter() {
                         let _ = client.round1(round1_package.clone()).await?;
-                        // warn!("send round1 package to {:?}", peer);
+                        debug!("send round1 package to {:?}", peer);
                     }
                     self.state = ProcessSteps::Part1Fetch;
                     continue;
@@ -165,7 +165,7 @@ impl DistributedKeyGeneration {
                     while !exit {
                         for (peer, client) in self.clients.iter() {
                             let count = client.round1_count().await?;
-                            // println!("{:?} -- {:?}", peer, count);
+                            debug!("{:?} -- {:?}", peer, count);
                             self.round1_count.insert(peer.clone(), count);
                         }
                         let max = self.ticket.max_shares as usize;
@@ -241,7 +241,7 @@ impl DistributedKeyGeneration {
                 ProcessSteps::Part2Send => {
                     info!("Part 2 Send");
                     for (id, pack) in self.round2_map_out.iter() {
-                        // info!("part2 send {:?}", &id);
+                        debug!("part2 send {:?}", &id);
                         let client = self
                             .clients
                             .get(id)
@@ -263,8 +263,6 @@ impl DistributedKeyGeneration {
                         let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
                         self.round2_map_in.insert(ident, pack2);
                     }
-                    // println!("{:?}", self.round1.keys());
-                    // println!("{:?}", self.round2_map_in.keys());
                     self.state = ProcessSteps::Part3Build;
                     continue;
                 }
@@ -308,10 +306,9 @@ impl DistributedKeyGeneration {
 
     fn check_round1(&self) -> Result<()> {
         info!("check that all the round 1 packages are equivilent");
-        // println!("{:#?}", self.round1);
         let mut clumped: BTreeMap<PublicKey, Vec<r1package>> = Default::default();
-        for (_, peer_map) in self.round1.iter() {
-            // println!("map check {:?} -- {:?}", peer, peer_map.len());
+        for (peer, peer_map) in self.round1.iter() {
+            debug!("map check {:?} -- {:?}", peer, peer_map.len());
             for (key, pack) in peer_map.iter() {
                 clumped.entry(key.clone()).or_default().push(pack.clone())
             }
@@ -335,9 +332,9 @@ impl DistributedKeyGeneration {
         loop {
             for (peer, client) in self.clients.iter() {
                 match client.boop().await {
-                    Ok(_) => {
+                    Ok(n) => {
+                        debug!("booper {:?} -- {:?}", peer, n);
                         continue;
-                        // println!("booper {:?} -- {:?}", peer, n);
                     }
                     Err(e) => error!("{:?} for {:?}", e, peer),
                 }
@@ -360,19 +357,10 @@ impl DistributedKeyGeneration {
         println!("______________________________");
     }
 
-    // async fn run_each(&mut self) -> Result<()> {
-    //     let r: Vec<&mut FrostyClient> = self.clients
-    //         .iter_mut()
-    //         .map(|(_, client)| client).collect();
-    //     r.iter().for_each(FrostyClient::count);
-    //     Ok(())
-    // }
-
     async fn auth_all(&mut self) -> Result<Vec<PublicKey>> {
         let mut peer_list: Vec<PublicKey> = Vec::new();
         for (peer, client) in self.clients.iter() {
-            // let a = client.auth(self.ticket.token.as_str()).await?;
-            // warn!("{:?} -- {:?}", peer, a);
+            debug!("{:?} -- {:?}", peer, client);
             let mut count = 0;
             const MAX_FAIL: i32 = 5;
             let mut exit = false;

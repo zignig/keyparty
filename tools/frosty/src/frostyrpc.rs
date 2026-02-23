@@ -5,7 +5,7 @@ pub use self::frosted::{FrostyClient, FrostyServer, ProcessSteps};
 
 mod frosted {
     use tokio::task;
-    use tracing::{error, warn};
+    use tracing::{debug, error, warn};
 
     use std::{
         collections::BTreeMap,
@@ -149,8 +149,8 @@ mod frosted {
                                 .lock()
                                 .unwrap()
                                 .insert(conn.remote_id().into(), "fren".to_string());
-                            // warn!("auth succeced for {:?}", conn.remote_id());
-                            // warn!("{:?}", &self.peers);
+                            debug!("auth succeced for {:?}", conn.remote_id());
+                            debug!("{:?}", &self.peers);
                             tx.send(Ok(())).await.ok();
                         }
                     }
@@ -207,7 +207,7 @@ mod frosted {
 
         // Handle mesasges that have
         async fn handle_authenticated(&self, msg: FrostyMessage, id: PublicKey) {
-            // info!("msg_from {:?} of {:?}",id,msg);
+            debug!("msg_from {:?} of {:?}",id,msg);
             match msg {
                 FrostyMessage::Auth(msg) => {
                     let WithChannels { tx, .. } = msg;
@@ -240,7 +240,7 @@ mod frosted {
                 }
                 FrostyMessage::Part1Send(part1) => {
                     let WithChannels { inner, tx, .. } = part1;
-                    // info!("part 1 package from {:?} -- {:?}", id, inner.pack);
+                    debug!("part 1 package from {:?} -- {:?}", id, inner.pack);
                     self.r1packages.lock().unwrap().insert(id, inner.pack);
                     tx.send(()).await.ok();
                 }
@@ -266,7 +266,7 @@ mod frosted {
                 }
                 FrostyMessage::Part2Send(pack) => {
                     let WithChannels { inner, tx, .. } = pack;
-                    // info!("part 2 package arrives {:?}", inner.pack);
+                    debug!("part 2 package arrives {:?}", inner.pack);
                     self.r2packages.lock().unwrap().insert(id, inner.pack);
                     tx.send(()).await.ok();
                 }
