@@ -39,11 +39,11 @@ async fn main() -> Result<()> {
         .with(filter)
         .init();
 
-    // TODO split into key party and signing party
+    // Mode switch keygen / signing party
     let config = Config::load()?;
     let res = match args.command {
         Command::Server { .. } | Command::Client { .. } => keygen::run(config, args).await,
-        Command::Sign { ref file } => signing::run(config, args.clone(), file.clone()).await,
+        Command::Sign { ref file } => signing::run(config, args.clone(), file).await,
     };
     info!("{:#?}", res);
     Ok(())

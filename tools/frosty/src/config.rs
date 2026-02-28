@@ -53,6 +53,13 @@ impl Config {
         self.save();
     }
 
+    pub fn peers(self) -> Vec<PublicKey> { 
+        match self.peers {
+            Some(peers) => peers,
+            None => vec![],
+        }
+    }
+
     pub fn set_packages(&mut self, key_share: String, public_share: String, verify_key: String) {
         self.key_package = Some(key_share);
         self.public_package = Some(public_share);

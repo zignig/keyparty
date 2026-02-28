@@ -23,6 +23,6 @@ pub enum Command {
         ticket: String,
     },
     Sign {
-        file: String,
+        file: Option<String>,
     },
 }

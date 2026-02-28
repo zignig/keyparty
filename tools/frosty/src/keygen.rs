@@ -60,7 +60,6 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
         }
         Command::Client { ticket } => {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
-            // task::spawn(test_rpc(endpoint.clone(), ticket.clone(), config));
             (FrostyClient::connect(endpoint.clone(), ticket.addr), ticket)
         }
         Command::Sign { .. } => return Ok(())
@@ -73,8 +72,6 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
     // Spawn a new runner
     let handle = task::spawn(dkg.run());
     let _res = handle.await;
-
-    // tokio::signal::ctrl_c().await?;
 
     let _ = router.shutdown().await;
     Ok(())
