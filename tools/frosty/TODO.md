@@ -1,8 +1,7 @@
 # Some todo stuff 
 
-1. new config file just creates the secret key
+1. change name to keyparty
 1. make the config file based on token name.
-1. Split into keyparty and signer.
 1. integrate rcan construction
     1. use as a rcan anchor , and sign subkeys
     2. distribute rcan chains
@@ -33,4 +32,7 @@
     - collect and sign
     - compare sigs and save
 
+# Done
 
+1. new config file just creates the secret key
+1. Split into keyparty and signer.

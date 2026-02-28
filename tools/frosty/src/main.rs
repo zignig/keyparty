@@ -1,44 +1,37 @@
 // Frosty generator
 
 use clap::Parser;
-use iroh::Endpoint;
-use iroh_tickets::Ticket;
 use n0_error::Result;
-use tokio::task;
-use tracing::{error, info};
+use tracing::info;
 
 mod cli;
 mod config;
 mod frostyrpc;
+mod keygen;
 mod process;
+mod signing;
 mod ticket;
 
-use cli::Args;
+use cli::{Args, Command};
 use config::Config;
-use frostyrpc::FrostyServer;
-use process::DistributedKeyGeneration;
 
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::prelude::*;
 
-use crate::{frostyrpc::FrostyClient, ticket::FrostyTicket};
-
 #[tokio::main]
 async fn main() -> Result<()> {
+    info!("Starting Keyparty");
     let args = Args::parse();
     let mut filter = Targets::new();
     match args.verbose {
         0 => filter = filter.with_target("frosty", LevelFilter::INFO),
-        1 => {
-            filter = filter
-                .with_target("frosty", LevelFilter::DEBUG)
-        },
+        1 => filter = filter.with_target("frosty", LevelFilter::DEBUG),
         2 => {
             filter = filter
                 .with_target("iroh", LevelFilter::DEBUG)
                 .with_target("frosty", LevelFilter::DEBUG)
-        },
-        _ => {},
+        }
+        _ => {}
     };
 
     tracing_subscriber::registry()
@@ -47,76 +40,11 @@ async fn main() -> Result<()> {
         .init();
 
     // TODO split into key party and signing party
-
-    let (config, endpoint) = match Config::load() {
-        Ok(config) => {
-            let endpoint = Endpoint::builder()
-                .secret_key(config.secret())
-                .bind()
-                .await?;
-            (config, endpoint)
-        }
-        Err(e) => {
-            error!("{:?}", e);
-            let endpoint = Endpoint::builder().bind().await?;
-            let config = Config::new(endpoint.secret_key().clone());
-            (config, endpoint)
-        }
+    let config = Config::load()?;
+    let res = match args.command {
+        Command::Server { .. } | Command::Client { .. } => keygen::run(config, args).await,
+        Command::Sign { ref file } => signing::run(config, args.clone(), file.clone()).await,
     };
-
-    // get online
-    let _ = endpoint.online().await;
-    println!("{:#?}",args);
-    info!("{}", &endpoint.id());
-
-    // set up the rpc
-
-    let (token, max) = match args.command {
-        cli::Command::Server { ref token, max, .. } => (token.clone(), max),
-        cli::Command::Client { ref ticket } => {
-            let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
-            (ticket.token.clone(), ticket.max_shares)
-        }
-    };
-
-    // make the frosty server
-    let frosty_rpc = FrostyServer::new(token.clone(), max as usize, endpoint.id());
-
-    // create a local client
-    let local_rpc = frosty_rpc.clone().local();
-
-    // spawn the router
-    let router = iroh::protocol::RouterBuilder::new(endpoint.clone())
-        .accept(frostyrpc::ALPN, frosty_rpc)
-        .spawn();
-
-    // create the process based on the mode
-    let (process_client, ticket) = match args.command {
-        cli::Command::Server { token, max, min } => {
-            let ticket = FrostyTicket::new(endpoint.id(), token.clone(), max, min);
-            let val = ticket.serialize();
-            println!("Ticket to share: {}", val);
-            let bork = FrostyTicket::deserialize(val.as_str())?;
-            println!("{:#?}", bork);
-            (local_rpc.clone(), ticket)
-        }
-        cli::Command::Client { ticket } => {
-            let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
-            // task::spawn(test_rpc(endpoint.clone(), ticket.clone(), config));
-            (FrostyClient::connect(endpoint.clone(), ticket.addr), ticket)
-        }
-    };
-
-    // Kick off the process
-    // Create the generator
-    let dkg =
-        DistributedKeyGeneration::new(endpoint.clone(), local_rpc, process_client, ticket, config);
-    // Spawn a new runner
-    let handle = task::spawn(dkg.run());
-    let _res = handle.await;
-
-    // tokio::signal::ctrl_c().await?;
-
-    let _ = router.shutdown().await;
+    info!("{:#?}", res);
     Ok(())
 }

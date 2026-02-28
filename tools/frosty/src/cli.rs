@@ -1,6 +1,8 @@
+// Cli entries
+
 use clap_derive::Parser;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Clone, Debug)]
 pub struct Args {
     #[clap(subcommand)]
     pub command: Command,
@@ -8,7 +10,7 @@ pub struct Args {
     pub verbose: u8,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Clone, Debug)]
 pub enum Command {
     Server {
         token: String,
@@ -19,5 +21,8 @@ pub enum Command {
     },
     Client {
         ticket: String,
+    },
+    Sign {
+        file: String,
     },
 }

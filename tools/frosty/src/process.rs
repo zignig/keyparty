@@ -17,24 +17,24 @@ use crate::{
 
 // Key gen imports
 use anyhow::anyhow;
-use frost_ed25519::keys::dkg::round1::Package as r1package;
+use frost_ed25519::keys::dkg::round1::Package as R1package;
 use frost_ed25519::{self as frost, Identifier};
 
 pub struct DistributedKeyGeneration {
     config: Config,
     endpoint: Endpoint,
     local_rpc: FrostyClient,
-    process_client: FrostyClient,
+    process_client: Option<FrostyClient>,
     clients: BTreeMap<PublicKey, FrostyClient>,
     ticket: FrostyTicket,
     state: ProcessSteps,
     my_id: PublicKey,
+
     // round 1 info
-    round1: BTreeMap<PublicKey, BTreeMap<PublicKey, r1package>>,
+    round1: BTreeMap<PublicKey, BTreeMap<PublicKey, R1package>>,
     round1_secret: Option<frost_ed25519::keys::dkg::round1::SecretPackage>,
-    round1_count: BTreeMap<PublicKey, usize>,
     // map built for ident
-    part1_map: BTreeMap<Identifier, r1package>,
+    part1_map: BTreeMap<Identifier, R1package>,
     // round 2 info
     round2_secret: Option<frost_ed25519::keys::dkg::round2::SecretPackage>,
     round2_map_out: BTreeMap<PublicKey, frost_ed25519::keys::dkg::round2::Package>,
@@ -57,14 +57,14 @@ impl DistributedKeyGeneration {
             config: config,
             endpoint: endpoint,
             local_rpc: local_rpc,
-            process_client: client,
+            process_client: Some(client),
             clients: Default::default(),
             ticket: ticket,
             state: ProcessSteps::Init,
             my_id: my_id,
+            
             round1: Default::default(),
             round1_secret: None,
-            round1_count: Default::default(),
             part1_map: Default::default(),
             round2_secret: None,
             round2_map_out: Default::default(),
@@ -75,6 +75,8 @@ impl DistributedKeyGeneration {
     pub async fn run(mut self) -> Result<()> {
         info!("Starting the key generation for {:?}", self.my_id);
         let mut rng = frost_ed25519::rand_core::OsRng;
+        // Process client is an option so it can be dropped
+        let process_client = self.process_client.clone().ok_or("No process client")?;
         loop {
             match self.state {
                 // Wait for the correct number of clients
@@ -87,7 +89,7 @@ impl DistributedKeyGeneration {
                     const MAX_FAIL: i32 = 5;
                     let mut exit = false;
                     while !exit {
-                        match self.process_client.auth(self.ticket.token.as_str()).await {
+                        match process_client.auth(self.ticket.token.as_str()).await {
                             Ok(_) => exit = true,
                             Err(e) => {
                                 error!("CONNECT fail {:?} of {:?} with {:?} ", count, MAX_FAIL, e);
@@ -99,7 +101,7 @@ impl DistributedKeyGeneration {
                         }
                     }
                     loop {
-                        let count = self.process_client.count().await?;
+                        let count = process_client.count().await?;
                         if count != client_counter {
                             info!("New client {:?}/{:?}", count, self.ticket.max_shares);
                             if count == self.ticket.max_shares as usize {
@@ -110,14 +112,16 @@ impl DistributedKeyGeneration {
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                     info!("start the process");
+                    debug!("save the peers");
                     self.state = ProcessSteps::CreateMesh;
                     continue;
                 }
                 // Connect all the clients  together
                 ProcessSteps::CreateMesh => {
                     info!("Create the mesh");
-                    let mut peers = self.process_client.peers().await?;
+                    
                     // Add this node
+                    let mut peers =process_client.peers().await?;
                     self.clients.insert(self.my_id, self.local_rpc.clone());
                     while let Some(peer) = peers.recv().await? {
                         debug!("peers {:?}", peer);
@@ -132,6 +136,9 @@ impl DistributedKeyGeneration {
                     self.config.set_peers(peers);
                     // some requests to be sure
                     self.booper().await?;
+                    // process client is no longer needed , set to none
+                    // this will drop the irpc connectio 
+                    self.process_client = None;
                     self.state = ProcessSteps::Part1Send;
                     continue;
                 }
@@ -162,21 +169,22 @@ impl DistributedKeyGeneration {
                 ProcessSteps::Part1Fetch => {
                     info!("Check that each client has enough packs");
                     let mut exit = false;
+                    let mut round1_count : BTreeMap<PublicKey, usize> = Default::default();
                     while !exit {
                         for (peer, client) in self.clients.iter() {
                             let count = client.round1_count().await?;
                             debug!("{:?} -- {:?}", peer, count);
-                            self.round1_count.insert(peer.clone(), count);
+                            round1_count.insert(peer.clone(), count);
                         }
                         let max = self.ticket.max_shares as usize;
                         // if they are all there bail out
-                        exit = self.round1_count.values().all(|x| *x == max);
+                        exit = round1_count.values().all(|x| *x == max);
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                     info!("Part1 Fetch");
                     for (peer, client) in self.clients.iter() {
                         let mut packages = client.round1_fetch().await?;
-                        let mut peer_pack: BTreeMap<PublicKey, r1package> = Default::default();
+                        let mut peer_pack: BTreeMap<PublicKey, R1package> = Default::default();
                         while let Some((p, i)) = packages.recv().await? {
                             peer_pack.insert(p, i);
                         }
@@ -196,7 +204,7 @@ impl DistributedKeyGeneration {
                 ProcessSteps::Part2Build => {
                     info!("Part 2 build");
                     // Build the correct map type
-                    let mut part1_map: BTreeMap<Identifier, r1package> = Default::default();
+                    let mut part1_map: BTreeMap<Identifier, R1package> = Default::default();
                     // Map identfiers to ID (conversion is painful , just save and remap)
                     let mut id_key_map: BTreeMap<Identifier, PublicKey> = Default::default();
 
@@ -315,7 +323,7 @@ impl DistributedKeyGeneration {
 
     fn check_round1(&self) -> Result<()> {
         info!("check that all the round 1 packages are equivilent");
-        let mut clumped: BTreeMap<PublicKey, Vec<r1package>> = Default::default();
+        let mut clumped: BTreeMap<PublicKey, Vec<R1package>> = Default::default();
         for (peer, peer_map) in self.round1.iter() {
             debug!("map check {:?} -- {:?}", peer, peer_map.len());
             for (key, pack) in peer_map.iter() {
