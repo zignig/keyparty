@@ -1,6 +1,8 @@
 # Some todo stuff 
 
-1. change name to keyparty
+1. change name to keyparty.
+1. move the key generation data into it's own struct.
+1. add finished event to drop the key gen structs.
 1. make the config file based on token name.
 1. integrate rcan construction
     1. use as a rcan anchor , and sign subkeys

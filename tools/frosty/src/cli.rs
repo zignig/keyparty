@@ -1,5 +1,6 @@
 // Cli entries
 
+use bytes::Bytes;
 use clap_derive::Parser;
 
 #[derive(Parser, Clone, Debug)]
@@ -23,6 +24,6 @@ pub enum Command {
         ticket: String,
     },
     Sign {
-        file: Option<String>,
+        message: Option<Bytes>,
     },
 }

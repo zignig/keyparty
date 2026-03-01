@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
     let config = Config::load()?;
     let res = match args.command {
         Command::Server { .. } | Command::Client { .. } => keygen::run(config, args).await,
-        Command::Sign { ref file } => signing::run(config, args.clone(), file).await,
+        Command::Sign { ref message } => signing::run(config, args.clone(), message.clone()).await,
     };
     info!("{:#?}", res);
     Ok(())

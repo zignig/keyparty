@@ -62,7 +62,7 @@ impl DistributedKeyGeneration {
             ticket: ticket,
             state: ProcessSteps::Init,
             my_id: my_id,
-            
+
             round1: Default::default(),
             round1_secret: None,
             part1_map: Default::default(),
@@ -119,9 +119,9 @@ impl DistributedKeyGeneration {
                 // Connect all the clients  together
                 ProcessSteps::CreateMesh => {
                     info!("Create the mesh");
-                    
+
                     // Add this node
-                    let mut peers =process_client.peers().await?;
+                    let mut peers = process_client.peers().await?;
                     self.clients.insert(self.my_id, self.local_rpc.clone());
                     while let Some(peer) = peers.recv().await? {
                         debug!("peers {:?}", peer);
@@ -137,7 +137,7 @@ impl DistributedKeyGeneration {
                     // some requests to be sure
                     self.booper().await?;
                     // process client is no longer needed , set to none
-                    // this will drop the irpc connectio 
+                    // this will drop the irpc connectio
                     self.process_client = None;
                     self.state = ProcessSteps::Part1Send;
                     continue;
@@ -169,7 +169,7 @@ impl DistributedKeyGeneration {
                 ProcessSteps::Part1Fetch => {
                     info!("Check that each client has enough packs");
                     let mut exit = false;
-                    let mut round1_count : BTreeMap<PublicKey, usize> = Default::default();
+                    let mut round1_count: BTreeMap<PublicKey, usize> = Default::default();
                     while !exit {
                         for (peer, client) in self.clients.iter() {
                             let count = client.round1_count().await?;
@@ -295,20 +295,21 @@ impl DistributedKeyGeneration {
                     let key_share_vec = key_share.serialize().expect("bad keyshare serialization");
                     let public_share_vec =
                         public_share.serialize().expect("bad public serialization");
-                    let verifying_vec = public_share
-                        .verifying_key()
-                        .serialize()
-                        .expect("bad verifying key");
+                    // let verifying_vec = public_share
+                    //     .verifying_key()
+                    //     .serialize()
+                    //     .expect("bad verifying key");   
 
+                    let vk_public  = public_share.verifying_key().clone();
                     let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
                     let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
-                    let mut vk_hex = data_encoding::BASE32_NOPAD.encode(&verifying_vec);
+                    // let mut vk_hex = data_encoding::BASE32_NOPAD.encode(&verifying_vec);
 
                     ks_hex.make_ascii_lowercase();
                     ps_hex.make_ascii_lowercase();
-                    vk_hex.make_ascii_lowercase();
+                    // vk_hex.make_ascii_lowercase();
 
-                    self.config.set_packages(ks_hex, ps_hex, vk_hex);
+                    self.config.set_packages(ks_hex, ps_hex, vk_public);
                     info!("See file {:?}", Config::FILE_NAME);
                     self.state = ProcessSteps::Finish;
                     continue;
@@ -384,7 +385,9 @@ impl DistributedKeyGeneration {
             while !exit {
                 match client.auth(self.ticket.token.as_str()).await {
                     Ok(_) => {
-                        peer_list.push(peer.clone());
+                        if *peer != self.my_id {
+                            peer_list.push(peer.clone());
+                        };
                         exit = true;
                     }
                     Err(e) => {

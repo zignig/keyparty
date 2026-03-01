@@ -2,7 +2,8 @@
 
 use bytes::Bytes;
 use std::time::Duration;
-use tokio::sync::mpsc::Sender;
+
+use tokio::{sync::mpsc::Receiver, sync::mpsc::Sender};
 
 use iroh::{
     Endpoint, PublicKey, RelayMode, SecretKey, Signature, discovery::mdns::MdnsDiscovery,
@@ -15,15 +16,16 @@ use iroh_gossip::{
 use n0_error::Result;
 use n0_future::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::{cli::Args, config::Config};
 
 mod auth;
 mod protocol;
 
-pub async fn run(config: Config, args: Args, message: &Option<String>) -> Result<()> {
-    info!("Start the signing party");
+
+pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
+    info!("-- Start the signing party --");
 
     let endpoint = Endpoint::builder()
         .secret_key(config.secret())
@@ -35,6 +37,9 @@ pub async fn run(config: Config, args: Args, message: &Option<String>) -> Result
     let mdns = MdnsDiscovery::builder().build(endpoint.id()).unwrap();
     endpoint.discovery().add(mdns.clone());
 
+    // Build all signing bits 
+    // Convert to an actor.
+
     let gossip = Gossip::builder().spawn(endpoint.clone());
 
     let router = RouterBuilder::new(endpoint.clone())
@@ -42,30 +47,46 @@ pub async fn run(config: Config, args: Args, message: &Option<String>) -> Result
         .spawn();
 
     // Gossip bits
+    let topic = config.public_key();
     let topic_id = TopicId::from_bytes([5; 32]);
+
     let peers = config.clone().peers();
+
+    for peer in peers.iter() { 
+        info!("Waiting for peer : {:?}",peer);
+    }
     let goss = gossip.subscribe_and_join(topic_id, peers).await?;
     let secret = config.secret().clone();
     let (tx, rx) = goss.split();
 
-    // Messages between
-    let (outgoing, incoming) = tokio::sync::mpsc::channel(10);
+    // Messages between actors
+    let (from_gossip, to_signer) = tokio::sync::mpsc::channel::<SigEvents>(10);
+    let (from_signer, to_gossip) = tokio::sync::mpsc::channel::<SigningMessage>(10);
 
     // Create the signer
     let peers = config.clone().peers();
-    let signer = protocol::SigningSequence::new("hello".into(), incoming, peers);
+    let signer = protocol::SigningSequence::new(message, from_signer, to_signer, peers);
 
     tokio::spawn(protocol::run(signer));
-    // Spawn the main process
-    tokio::spawn(runner(rx, outgoing));
+
+    tokio::spawn(runner(tx.clone(),rx, from_gossip, to_gossip,secret.clone()));
+
     tokio::spawn(booper(tx, secret));
 
     tokio::signal::ctrl_c().await?;
+
     let _ = router.shutdown().await;
+
     Ok(())
 }
 
-pub async fn runner(mut rx: GossipReceiver, outgoing: Sender<SigEvents>) -> Result<()> {
+pub async fn runner(
+    tx: GossipSender,
+    mut rx: GossipReceiver,
+    outgoing: Sender<SigEvents>,
+    mut incoming: Receiver<SigningMessage>,
+    secret: SecretKey,
+) -> Result<()> {
     // Select on the events
     // from gossip
     // from local irpc
@@ -73,6 +94,7 @@ pub async fn runner(mut rx: GossipReceiver, outgoing: Sender<SigEvents>) -> Resu
     loop {
         tokio::select! {
             biased;
+            // Events from the gossip network.
             event = rx.try_next() => {
                 let event = event?;
                 if let Some(event) = event {
@@ -88,21 +110,26 @@ pub async fn runner(mut rx: GossipReceiver, outgoing: Sender<SigEvents>) -> Resu
                                 }
                             };
                             outgoing.send(SigEvents{id : public_key,message : mess_checked.clone()}).await.expect("send to sig failed");
-                            info!("message {} => {:?}",public_key.fmt_short(),mess_checked);
+                            debug!("message {} => {:?}",public_key.fmt_short(),mess_checked);
                         }
                         Event::Lagged => println!("Lagged!!"),
                     }
-
                 }
             }
+            Some(signer) = incoming.recv() =>{
+                error!("SIGNER ==> GOSSIP {:?}",signer);
+                let sig_mess = SignedMessage::sign_and_encode(&secret, &signer)?;
+                let _ = tx.broadcast(sig_mess).await;
+            }
+
         }
-    } 
+    }
     Ok(())
 }
 
 pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     loop {
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         let message = SigningMessage::Hello;
         let sig_mess = SignedMessage::sign_and_encode(&secret_key, &message)?;
         let _ = tx.broadcast(sig_mess).await;
@@ -110,7 +137,7 @@ pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
 }
 
 // Transfer messages
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct SigEvents {
     id: PublicKey,
     message: SigningMessage,

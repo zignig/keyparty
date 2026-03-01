@@ -5,26 +5,39 @@ use bytes::Bytes;
 use frost_ed25519 as frost;
 use iroh::PublicKey;
 use n0_error::Result;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{info, warn};
 
 use super::{SigEvents, SigningMessage};
+
+pub enum Steps {
+    preparty,
+    init,
+    quorum,
+    consensus,
+}
 
 #[derive(Debug)]
 pub struct SigningSequence {
     transact: i64,
     state: SigningMessage,
     incoming: Receiver<SigEvents>,
+    outgoing: Sender<SigningMessage>,
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
     // Round 1
     nonce: Option<frost::round1::SigningNonces>,
     round1_commitments: Option<BTreeMap<PublicKey, frost::round1::SigningCommitments>>,
-    message: Bytes,
+    message: Option<Bytes>,
 }
 
 impl SigningSequence {
-    pub fn new(message: Bytes, incoming: Receiver<SigEvents>, peers_vec: Vec<PublicKey>) -> Self {
+    pub fn new(
+        message: Option<Bytes>,
+        outgoing: Sender<SigningMessage>,
+        incoming: Receiver<SigEvents>,
+        peers_vec: Vec<PublicKey>,
+    ) -> Self {
         let transact = chrono::Utc::now()
             .timestamp_nanos_opt()
             .expect("time does not exist");
@@ -36,6 +49,7 @@ impl SigningSequence {
             transact,
             state: SigningMessage::Init,
             incoming,
+            outgoing,
             peers: peer_set,
             online_peers: Default::default(),
             nonce: None,
@@ -44,7 +58,10 @@ impl SigningSequence {
         }
     }
 
+
+    // Need a diagram of the signing flow
     async fn handle_event(&mut self, event: SigEvents) -> Result<()> {
+        // NEEDS a global timeout.
         // Match for state machine
         match &self.state {
             SigningMessage::Init => {
@@ -55,9 +72,15 @@ impl SigningSequence {
                     self.state = SigningMessage::Hello;
                 }
             }
-            SigningMessage::Hello => todo!(),
-            SigningMessage::Waves => todo!(),
-            SigningMessage::Start { .. } => todo!(),
+            SigningMessage::Hello => {
+                info!("MODE HELLO");
+                let _ = self.outgoing.send(SigningMessage::Waves).await;
+                self.state = SigningMessage::Waves;
+            }
+            SigningMessage::Waves => {
+                info!("MODE WAVES");
+            },
+            SigningMessage::Start { .. } => {},
             SigningMessage::Round1 => todo!(),
             SigningMessage::Round2 => todo!(),
             SigningMessage::Collect => todo!(),
@@ -70,7 +93,7 @@ impl SigningSequence {
 pub async fn run(mut s: SigningSequence) -> Result<()> {
     loop {
         while let Some(item) = s.incoming.recv().await {
-            info!("incoming in signer {:?}", item);
+            // info!("incoming in signer {:?}", item);
             s.handle_event(item).await?
         }
     }
