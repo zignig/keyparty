@@ -89,40 +89,57 @@ mod frosted {
     #[derive(Debug, Serialize, Deserialize)]
     struct Part2Fetch;
 
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Finish;
+
     // Use the macro to generate both the messages and the protocol
     // plus implement Channels for each type
     #[rpc_requests(message = FrostyMessage)]
     #[derive(Serialize, Deserialize, Debug)]
     enum FrostyProtocol {
+        // Inital Auth
         #[rpc(tx=oneshot::Sender<Result<(), String>>)]
         Auth(Auth),
 
+        // Send a list of peers
         #[rpc(tx=mpsc::Sender<PublicKey>)]
         Peers(Peers),
 
+        // Send the current peer count here
         #[rpc(tx=oneshot::Sender<usize>)]
         PeerCount(PeerCount),
 
+        // Ping Stuff for testing
         #[rpc(tx=oneshot::Sender<usize>)]
         Boop(Boop),
 
+        // Send part 1 of the key build out
         #[rpc(tx=oneshot::Sender<()>)]
         Part1Send(Part1Send),
 
+        // Show the count of part 1 here
         #[rpc(tx=oneshot::Sender<usize>)]
         Part1Count(Part1Count),
 
+        // Fetch all the part 1 sections
         #[rpc(tx=mpsc::Sender<(PublicKey,R1package)>)]
         Part1Fetch(Part1Fetch),
 
+        // Send the part 2 data
         #[rpc(tx=oneshot::Sender<()>)]
         Part2Send(Part2Send),
 
+        // Count the part 2 packages (local only)
         #[rpc(tx=oneshot::Sender<Result<usize,String>>)]
         Part2Count(Part2Count),
 
+        // Fetch the part 2 pacakges (local only)
         #[rpc(tx=mpsc::Sender<Result<(PublicKey,R2Package),String>>)]
         Part2Fetch(Part2Fetch),
+
+        // Finish The Transaction
+        #[rpc(tx=oneshot::Sender<()>)]
+        Finish(Finish),
     }
 
     // Add in all the sections for the  tranport
@@ -253,6 +270,7 @@ mod frosted {
                     let count = self.peers.lock().unwrap().len();
                     tx.send(count).await.ok();
                 }
+
                 // Connectivity testing
                 FrostyMessage::Boop(boop) => {
                     let WithChannels { tx, .. } = boop;
@@ -294,13 +312,13 @@ mod frosted {
                 }
 
                 // this is RPC but only accessed from the local
-                // second round packs are sensitive 
+                // second round packs are sensitive
                 FrostyMessage::Part2Count(count) => {
                     let WithChannels { tx, .. } = count;
                     if id != self.my_id {
                         error!("can't access remotely");
                         tx.send(Err("can't".into())).await.expect("Broken");
-                        return
+                        return;
                     }
                     let len = self.r2packages.lock().unwrap().len();
                     tx.send(Ok(len)).await.ok();
@@ -325,6 +343,11 @@ mod frosted {
                             break;
                         }
                     }
+                }
+                FrostyMessage::Finish(fin) => {
+                    warn!("Finishing Transaction");
+                    let WithChannels { tx, .. } = fin;
+                    tx.send(()).await.expect("finish failed")
                 }
             }
         }
@@ -379,6 +402,13 @@ mod frosted {
             self.inner.server_streaming(Part1Fetch {}, 10).await
         }
 
+        pub async fn round2_count(&self) -> Result<usize, String> {
+            self.inner
+                .rpc(Part2Count {})
+                .await
+                .expect("round2 count broken")
+        }
+
         pub async fn round2_fetch(
             &self,
         ) -> Result<mpsc::Receiver<Result<(PublicKey, R2Package), String>>, irpc::Error> {
@@ -399,6 +429,10 @@ mod frosted {
 
         pub async fn boop(&self) -> Result<usize, irpc::Error> {
             self.inner.rpc(Boop {}).await
+        }
+
+        pub async fn finish(&self) -> Result<(), irpc::Error> {
+            self.inner.rpc(Finish {}).await
         }
 
         pub fn local(&self) -> bool {

@@ -13,14 +13,14 @@ pub struct Args {
 
 #[derive(Parser, Clone, Debug)]
 pub enum Command {
-    Server {
+    Generate {
         token: String,
         #[arg(long, default_value_t = 3)]
         max: u16,
         #[arg(long, default_value_t = 2)]
         min: u16,
     },
-    Client {
+    Join {
         ticket: String,
     },
     Sign {

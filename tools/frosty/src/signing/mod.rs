@@ -23,7 +23,6 @@ use crate::{cli::Args, config::Config};
 mod auth;
 mod protocol;
 
-
 pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
     info!("-- Start the signing party --");
 
@@ -37,7 +36,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     let mdns = MdnsDiscovery::builder().build(endpoint.id()).unwrap();
     endpoint.discovery().add(mdns.clone());
 
-    // Build all signing bits 
+    // Build all signing bits
     // Convert to an actor.
 
     let gossip = Gossip::builder().spawn(endpoint.clone());
@@ -52,8 +51,8 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 
     let peers = config.clone().peers();
 
-    for peer in peers.iter() { 
-        info!("Waiting for peer : {:?}",peer);
+    for peer in peers.iter() {
+        info!("Waiting for peer : {:?}", peer);
     }
     let goss = gossip.subscribe_and_join(topic_id, peers).await?;
     let secret = config.secret().clone();
@@ -65,11 +64,18 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 
     // Create the signer
     let peers = config.clone().peers();
-    let signer = protocol::SigningSequence::new(message, from_signer, to_signer, peers);
+    let signer =
+        protocol::QuorumWatcher::new(config.clone(), message, from_signer, to_signer, peers);
 
     tokio::spawn(protocol::run(signer));
 
-    tokio::spawn(runner(tx.clone(),rx, from_gossip, to_gossip,secret.clone()));
+    tokio::spawn(runner(
+        tx.clone(),
+        rx,
+        from_gossip,
+        to_gossip,
+        secret.clone(),
+    ));
 
     tokio::spawn(booper(tx, secret));
 
@@ -99,8 +105,12 @@ pub async fn runner(
                 let event = event?;
                 if let Some(event) = event {
                     match event {
-                        Event::NeighborUp(public_key) => println!("NeighborUp {:?}", public_key),
-                        Event::NeighborDown(public_key) => println!("NeighborDown {:?}", public_key),
+                        Event::NeighborUp(public_key) => {
+                            println!("NeighborUp {:?}", public_key);
+                        },
+                        Event::NeighborDown(public_key) => {
+                            println!("NeighborDown {:?}", public_key);
+                        },
                         Event::Received(message) => {
                             let (public_key,mess_checked) = match SignedMessage::verify_and_decode(&message.content.to_vec()){
                                 Ok((public_key,sig_mess)) => (public_key,sig_mess),

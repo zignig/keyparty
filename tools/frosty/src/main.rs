@@ -6,9 +6,7 @@ use tracing::info;
 
 mod cli;
 mod config;
-mod frostyrpc;
 mod keygen;
-mod process;
 mod signing;
 mod ticket;
 
@@ -42,7 +40,7 @@ async fn main() -> Result<()> {
     // Mode switch keygen / signing party
     let config = Config::load()?;
     let res = match args.command {
-        Command::Server { .. } | Command::Client { .. } => keygen::run(config, args).await,
+        Command::Generate { .. } | Command::Join { .. } => keygen::run(config, args).await,
         Command::Sign { ref message } => signing::run(config, args.clone(), message.clone()).await,
     };
     info!("{:#?}", res);

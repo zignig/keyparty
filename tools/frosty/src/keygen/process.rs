@@ -9,9 +9,11 @@ use n0_error::Result;
 use std::{collections::BTreeMap, time::Duration};
 use tracing::{debug, error, info};
 
+use super::frostyrpc::{FrostyClient,ProcessSteps};
+
+
 use crate::{
-    config::Config,
-    frostyrpc::{FrostyClient, ProcessSteps},
+    config::Config,    
     ticket::FrostyTicket,
 };
 
@@ -40,6 +42,10 @@ pub struct DistributedKeyGeneration {
     round2_map_out: BTreeMap<PublicKey, frost_ed25519::keys::dkg::round2::Package>,
     // round 2 mapping
     round2_map_in: BTreeMap<Identifier, frost_ed25519::keys::dkg::round2::Package>,
+}
+
+async fn wait(mill: u64) { 
+    tokio::time::sleep(Duration::from_millis(mill)).await;
 }
 
 impl DistributedKeyGeneration {
@@ -85,16 +91,16 @@ impl DistributedKeyGeneration {
                     info!("Start the local client");
                     info!("Need {:?} clients", self.ticket.max_shares);
                     // need to make sure that this connection is robust ( try  more than once )
-                    let mut count = 0;
+                    let mut fail_count = 0;
                     const MAX_FAIL: i32 = 5;
                     let mut exit = false;
                     while !exit {
                         match process_client.auth(self.ticket.token.as_str()).await {
                             Ok(_) => exit = true,
                             Err(e) => {
-                                error!("CONNECT fail {:?} of {:?} with {:?} ", count, MAX_FAIL, e);
-                                count += 1;
-                                if count == MAX_FAIL {
+                                error!("CONNECT fail {:?} of {:?} with {:?} ", fail_count, MAX_FAIL, e);
+                                fail_count += 1;
+                                if fail_count == MAX_FAIL {
                                     return Err(e.into());
                                 }
                             }
@@ -109,7 +115,7 @@ impl DistributedKeyGeneration {
                             }
                             client_counter = count;
                         }
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        wait(100).await;
                     }
                     info!("start the process");
                     debug!("save the peers");
@@ -135,9 +141,11 @@ impl DistributedKeyGeneration {
                     let peers = self.auth_all().await?;
                     self.config.set_peers(peers);
                     // some requests to be sure
-                    self.booper().await?;
+
+                    // self.booper().await?;
+
                     // process client is no longer needed , set to none
-                    // this will drop the irpc connectio
+                    // this will drop the irpc connection
                     self.process_client = None;
                     self.state = ProcessSteps::Part1Send;
                     continue;
@@ -179,7 +187,7 @@ impl DistributedKeyGeneration {
                         let max = self.ticket.max_shares as usize;
                         // if they are all there bail out
                         exit = round1_count.values().all(|x| *x == max);
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        wait(50).await;
                     }
                     info!("Part1 Fetch");
                     for (peer, client) in self.clients.iter() {
@@ -266,8 +274,13 @@ impl DistributedKeyGeneration {
                     let mut exit = false;
                     while !exit {
                         // check that there are max - 1 round 2 packages
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                        exit = true;
+                        let round2_count = self.local_rpc.round2_count().await?;
+                        if round2_count == (self.ticket.max_shares - 1) as usize { 
+                            debug!("have round 2 count");
+                            exit = true;
+                        } else {
+                            wait(50).await;
+                        }
                     }
                     // This is fetching from local as it has the section given to this node
                     let mut packs = self.local_rpc.round2_fetch().await?;
@@ -311,11 +324,13 @@ impl DistributedKeyGeneration {
 
                     self.config.set_packages(ks_hex, ps_hex, vk_public);
                     info!("See file {:?}", Config::FILE_NAME);
+                    self.config.set_max_min(self.ticket.max_shares,self.ticket.min_shares);
                     self.state = ProcessSteps::Finish;
                     continue;
                 }
                 ProcessSteps::Finish => {
                     info!("Finishing key build");
+                    self.local_rpc.finish().await;
                     return Ok(());
                 }
             }
@@ -346,7 +361,7 @@ impl DistributedKeyGeneration {
 
     async fn booper(&self) -> Result<()> {
         let mut counter = 0;
-        const MAX: i32 = 4;
+        const MAX: i32 = 10;
         loop {
             for (peer, client) in self.clients.iter() {
                 match client.boop().await {
@@ -361,7 +376,6 @@ impl DistributedKeyGeneration {
             if counter > MAX {
                 return Ok(());
             }
-            tokio::time::sleep(Duration::from_millis(250)).await;
         }
     }
 

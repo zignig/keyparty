@@ -9,8 +9,11 @@ pub struct Config {
     secret: SecretKey,
     secondary_key: SecretKey,
     peers: Option<Vec<PublicKey>>,
+    seconday_peers: Option<Vec<PublicKey>>,
+    // encoded
     key_package: Option<String>,
     public_package: Option<String>,
+
     verify_key: Option<VerifyingKey>,
     max: u16,
     min: u16,
@@ -45,6 +48,7 @@ impl Config {
             secret: secret_key,
             secondary_key: secodary_key,
             peers: None,
+            seconday_peers: None,
             key_package: None,
             public_package: None,
             verify_key: None,
@@ -68,7 +72,12 @@ impl Config {
         }
     }
 
-    pub fn set_packages(&mut self, key_share: String, public_share: String, verify_key: VerifyingKey) {
+    pub fn set_packages(
+        &mut self,
+        key_share: String,
+        public_share: String,
+        verify_key: VerifyingKey,
+    ) {
         self.key_package = Some(key_share);
         self.public_package = Some(public_share);
         self.verify_key = Some(verify_key);
@@ -85,7 +94,16 @@ impl Config {
         self.verify_key
     }
 
+    pub fn secondary(&self) -> SecretKey {
+        self.secondary_key.clone()
+    }
+
     pub fn secret(&self) -> SecretKey {
         self.secret.clone()
     }
+
+    pub fn min(&self) -> usize { 
+        self.min as usize
+    }
+
 }

@@ -1,10 +1,14 @@
 // Key set generation mode
 
+mod frostyrpc;
+mod process;
+
+use frostyrpc::{FrostyClient, FrostyServer};
+use process::DistributedKeyGeneration;
+
 use crate::{
     cli::{Args, Command},
     config::Config,
-    frostyrpc::{self, FrostyClient, FrostyServer},
-    process::DistributedKeyGeneration,
     ticket::FrostyTicket,
 };
 
@@ -39,8 +43,8 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
     // set up the rpc
 
     let (token, max) = match args.command {
-        Command::Server { ref token, max, .. } => (token.clone(), max),
-        Command::Client { ref ticket } => {
+        Command::Generate { ref token, max, .. } => (token.clone(), max),
+        Command::Join { ref ticket } => {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
             (ticket.token.clone(), ticket.max_shares)
         }
@@ -60,7 +64,7 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
 
     // create the process based on the mode
     let (process_client, ticket) = match args.command {
-        Command::Server { token, max, min } => {
+        Command::Generate { token, max, min } => {
             let ticket = FrostyTicket::new(endpoint.id(), token.clone(), max, min);
             let val = ticket.serialize();
             println!("-----------------------------------------------------");
@@ -74,7 +78,7 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
 
             (local_rpc.clone(), ticket)
         }
-        Command::Client { ticket } => {
+        Command::Join { ticket } => {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
             (FrostyClient::connect(endpoint.clone(), ticket.addr), ticket)
         }
@@ -83,7 +87,7 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
 
     // Kick off the process
     // Create the generator
-    
+
     let dkg =
         DistributedKeyGeneration::new(endpoint.clone(), local_rpc, process_client, ticket, config);
     // Spawn a new runner
