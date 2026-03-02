@@ -9,7 +9,8 @@ pub struct Config {
     secret: SecretKey,
     secondary_key: SecretKey,
     peers: Option<Vec<PublicKey>>,
-    seconday_peers: Option<Vec<PublicKey>>,
+    secondary_peers: Option<Vec<PublicKey>>,
+
     // encoded
     key_package: Option<String>,
     public_package: Option<String>,
@@ -43,12 +44,12 @@ impl Config {
 
     pub fn new() -> Config {
         let secret_key = SecretKey::generate(&mut rand::rng());
-        let secodary_key = SecretKey::generate(&mut rand::rng());
+        let secondary_key = SecretKey::generate(&mut rand::rng());
         let config = Config {
             secret: secret_key,
-            secondary_key: secodary_key,
+            secondary_key: secondary_key,
             peers: None,
-            seconday_peers: None,
+            secondary_peers: None,
             key_package: None,
             public_package: None,
             verify_key: None,
@@ -66,6 +67,13 @@ impl Config {
 
     pub fn peers(self) -> Vec<PublicKey> {
         match self.peers {
+            Some(peers) => peers,
+            None => vec![],
+        }
+    }
+
+    pub fn secondaries(self) -> Vec<PublicKey> {
+        match self.secondary_peers {
             Some(peers) => peers,
             None => vec![],
         }
@@ -93,9 +101,13 @@ impl Config {
         self.verify_key
     }
 
-    #[allow(dead_code)]
     pub fn secondary(&self) -> SecretKey {
         self.secondary_key.clone()
+    }
+
+    pub fn save_secondary(&mut self,secondaries: Vec<PublicKey> ) { 
+        self.secondary_peers = Some(secondaries);
+        self.save();
     }
 
     pub fn secret(&self) -> SecretKey {

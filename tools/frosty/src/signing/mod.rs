@@ -27,7 +27,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     info!("-- Start the signing party --");
 
     let endpoint = Endpoint::builder()
-        .secret_key(config.secret())
+        .secret_key(config.secondary())
         .relay_mode(RelayMode::Disabled)
         .bind()
         .await?;
@@ -46,10 +46,10 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         .spawn();
 
     // Gossip bits
-    let topic = config.public_key();
+    // let topic = config.public_key();
     let topic_id = TopicId::from_bytes([5; 32]);
 
-    let peers = config.clone().peers();
+    let peers = config.clone().secondaries();
 
     for peer in peers.iter() {
         info!("Waiting for peer : {:?}", peer);

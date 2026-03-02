@@ -5,10 +5,10 @@ pub use self::frosted::{FrostyClient, FrostyServer, ProcessSteps};
 
 mod frosted {
     use tokio::task;
-    use tracing::{debug, error, warn};
+    use tracing::{debug, error, info, warn};
 
     use std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, BTreeSet},
         sync::{
             Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
@@ -47,6 +47,7 @@ mod frosted {
         Part2Send,
         Part2Fetch,
         Part3Build,
+        Secondaries,
         Finish,
     }
 
@@ -91,6 +92,14 @@ mod frosted {
 
     #[derive(Debug, Serialize, Deserialize)]
     struct Finish;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct SecondarySend {
+        id: PublicKey,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct SecondaryList;
 
     // Use the macro to generate both the messages and the protocol
     // plus implement Channels for each type
@@ -137,6 +146,14 @@ mod frosted {
         #[rpc(tx=mpsc::Sender<Result<(PublicKey,R2Package),String>>)]
         Part2Fetch(Part2Fetch),
 
+        // Send the secondary key
+        #[rpc(tx=oneshot::Sender<()>)]
+        SecondarySend(SecondarySend),
+
+        // Get the secondary list
+        #[rpc(tx=mpsc::Sender<PublicKey>)]
+        SecondaryList(SecondaryList),
+
         // Finish The Transaction
         #[rpc(tx=oneshot::Sender<()>)]
         Finish(Finish),
@@ -148,6 +165,7 @@ mod frosted {
     pub struct FrostyServer {
         max_peers: usize,
         peers: Arc<Mutex<BTreeMap<EndpointId, String>>>,
+        secondary_peers: Arc<Mutex<BTreeSet<EndpointId>>>,
         peer_count: Arc<AtomicUsize>,
         counter: Arc<AtomicUsize>,
         auth_token: String,
@@ -209,6 +227,7 @@ mod frosted {
             let s = Self {
                 max_peers: max_peers,
                 peers: Default::default(),
+                secondary_peers: Default::default(),
                 peer_count: Arc::new(AtomicUsize::new(0)),
                 counter: Arc::new(AtomicUsize::new(0)),
                 auth_token,
@@ -344,6 +363,31 @@ mod frosted {
                         }
                     }
                 }
+
+                FrostyMessage::SecondarySend(key) => {
+                    info!("secondary key");
+                    let WithChannels { tx, inner, .. } = key;
+                    // don't save my id
+                    self.secondary_peers.lock().unwrap().insert(inner.id);
+                    tx.send(()).await.ok();
+                }
+
+                FrostyMessage::SecondaryList(tx) => {
+                    let WithChannels { tx, .. } = tx;
+                    let secondaries: Vec<PublicKey> = self
+                        .secondary_peers
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .map(|id| id.clone())
+                        .collect();
+                    for key in secondaries {
+                        if tx.send(key.clone()).await.is_err() {
+                            break;
+                        };
+                    }
+                }
+
                 FrostyMessage::Finish(fin) => {
                     warn!("Finishing Transaction");
                     let WithChannels { tx, .. } = fin;
@@ -427,8 +471,32 @@ mod frosted {
             self.inner.rpc(PeerCount {}).await
         }
 
+        #[allow(unused)]
         pub async fn boop(&self) -> Result<usize, irpc::Error> {
             self.inner.rpc(Boop {}).await
+        }
+
+        pub async fn send_secondary(&self, id: PublicKey) {
+            self.inner
+                .rpc(SecondarySend { id })
+                .await
+                .expect("send failed")
+        }
+
+        pub async fn fetch_secondary(&self, exclude: Option<PublicKey>) -> Result<Vec<PublicKey>> {
+            let mut keys: Vec<PublicKey> = Vec::new();
+            let mut item = self.inner.server_streaming(SecondaryList {}, 10).await?;
+            while let Some(key) = item.recv().await? {
+                match exclude {
+                    Some(exclude) => {
+                        if key != exclude {
+                            keys.push(key)
+                        };
+                    }
+                    None => keys.push(key),
+                }
+            }
+            Ok(keys)
         }
 
         pub async fn finish(&self) -> Result<(), irpc::Error> {

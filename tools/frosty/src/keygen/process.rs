@@ -5,17 +5,13 @@
 // for the process
 
 use iroh::{Endpoint, PublicKey};
-use n0_error::Result;
+use n0_error::{AnyError, Result, anyerr};
 use std::{collections::BTreeMap, time::Duration};
 use tracing::{debug, error, info};
 
-use super::frostyrpc::{FrostyClient,ProcessSteps};
+use super::frostyrpc::{FrostyClient, ProcessSteps};
 
-
-use crate::{
-    config::Config,    
-    ticket::FrostyTicket,
-};
+use crate::{config::Config, ticket::FrostyTicket};
 
 // Key gen imports
 use anyhow::anyhow;
@@ -44,7 +40,7 @@ pub struct DistributedKeyGeneration {
     round2_map_in: BTreeMap<Identifier, frost_ed25519::keys::dkg::round2::Package>,
 }
 
-async fn wait(mill: u64) { 
+async fn wait(mill: u64) {
     tokio::time::sleep(Duration::from_millis(mill)).await;
 }
 
@@ -78,7 +74,7 @@ impl DistributedKeyGeneration {
         }
     }
 
-    pub async fn run(mut self) -> Result<()> {
+    pub async fn run(mut self) -> Result<(), AnyError> {
         info!("Starting the key generation for {:?}", self.my_id);
         let mut rng = frost_ed25519::rand_core::OsRng;
         // Process client is an option so it can be dropped
@@ -98,7 +94,10 @@ impl DistributedKeyGeneration {
                         match process_client.auth(self.ticket.token.as_str()).await {
                             Ok(_) => exit = true,
                             Err(e) => {
-                                error!("CONNECT fail {:?} of {:?} with {:?} ", fail_count, MAX_FAIL, e);
+                                error!(
+                                    "CONNECT fail {:?} of {:?} with {:?} ",
+                                    fail_count, MAX_FAIL, e
+                                );
                                 fail_count += 1;
                                 if fail_count == MAX_FAIL {
                                     return Err(e.into());
@@ -275,7 +274,7 @@ impl DistributedKeyGeneration {
                     while !exit {
                         // check that there are max - 1 round 2 packages
                         let round2_count = self.local_rpc.round2_count().await?;
-                        if round2_count == (self.ticket.max_shares - 1) as usize { 
+                        if round2_count == (self.ticket.max_shares - 1) as usize {
                             debug!("have round 2 count");
                             exit = true;
                         } else {
@@ -311,9 +310,9 @@ impl DistributedKeyGeneration {
                     // let verifying_vec = public_share
                     //     .verifying_key()
                     //     .serialize()
-                    //     .expect("bad verifying key");   
+                    //     .expect("bad verifying key");
 
-                    let vk_public  = public_share.verifying_key().clone();
+                    let vk_public = public_share.verifying_key().clone();
                     let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
                     let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
                     // let mut vk_hex = data_encoding::BASE32_NOPAD.encode(&verifying_vec);
@@ -324,12 +323,42 @@ impl DistributedKeyGeneration {
 
                     self.config.set_packages(ks_hex, ps_hex, vk_public);
                     info!("See file {:?}", Config::FILE_NAME);
-                    self.config.set_max_min(self.ticket.max_shares,self.ticket.min_shares);
+                    self.config
+                        .set_max_min(self.ticket.max_shares, self.ticket.min_shares);
+                    self.state = ProcessSteps::Secondaries;
+                    continue;
+                }
+                ProcessSteps::Secondaries => {
+                    let pub_key = self.config.secondary().public();
+                    for (peer, client) in self.clients.iter() {
+                        let _ = client.send_secondary(pub_key).await;
+                        debug!("send secondary key to  {:?}", peer);
+                    }
+                    let mut exit = false;
+                    let mut counter = 0;
+                    const MAX_TRIES: i32 = 5;
+                    while !exit {
+                        let sec = self.local_rpc.fetch_secondary(None).await?;
+                        if sec.len() == self.ticket.max_shares as usize {
+                            exit = true
+                        }
+                        counter += 1;
+                        if counter == MAX_TRIES {
+                            return Err(anyerr!("fail secondary key"));
+                        }
+                        wait(100).await;
+                    }
+                    let sec_id = self.config.secondary().public();
+                    let sec = self.local_rpc.fetch_secondary(Some(sec_id)).await?;
+                    error!("secondary keys {:?}",sec);
+                    self.config.save_secondary(sec);
+
                     self.state = ProcessSteps::Finish;
                     continue;
                 }
                 ProcessSteps::Finish => {
                     info!("Finishing key build");
+
                     let _ = self.local_rpc.finish().await;
                     return Ok(());
                 }
@@ -357,8 +386,7 @@ impl DistributedKeyGeneration {
         Ok(())
     }
 
-    // #[allow(dead_code)]
-
+    #[allow(dead_code)]
     async fn booper(&self) -> Result<()> {
         let mut counter = 0;
         const MAX: i32 = 10;
