@@ -330,7 +330,7 @@ impl DistributedKeyGeneration {
                 }
                 ProcessSteps::Finish => {
                     info!("Finishing key build");
-                    self.local_rpc.finish().await;
+                    let _ = self.local_rpc.finish().await;
                     return Ok(());
                 }
             }

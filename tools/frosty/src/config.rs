@@ -59,7 +59,6 @@ impl Config {
         config
     }
 
-    #[allow(dead_code)]
     pub fn set_peers(&mut self, peers: Vec<PublicKey>) {
         self.peers = Some(peers);
         self.save();
@@ -94,6 +93,7 @@ impl Config {
         self.verify_key
     }
 
+    #[allow(dead_code)]
     pub fn secondary(&self) -> SecretKey {
         self.secondary_key.clone()
     }

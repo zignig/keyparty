@@ -13,7 +13,7 @@ use iroh_gossip::{
     ALPN as GOSSIP_APLN, Gossip, TopicId,
     api::{Event, GossipReceiver, GossipSender},
 };
-use n0_error::Result;
+use n0_error::{AnyError, Result};
 use n0_future::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
@@ -92,7 +92,7 @@ pub async fn runner(
     outgoing: Sender<SigEvents>,
     mut incoming: Receiver<SigningMessage>,
     secret: SecretKey,
-) -> Result<()> {
+) -> Result<(), AnyError> {
     // Select on the events
     // from gossip
     // from local irpc
@@ -107,9 +107,11 @@ pub async fn runner(
                     match event {
                         Event::NeighborUp(public_key) => {
                             println!("NeighborUp {:?}", public_key);
+                            let _ = outgoing.send(SigEvents { id: public_key, message: SigningMessage::PeerUp}).await;
                         },
                         Event::NeighborDown(public_key) => {
                             println!("NeighborDown {:?}", public_key);
+                            let _ = outgoing.send(SigEvents { id: public_key, message: SigningMessage::PeerDown}).await;
                         },
                         Event::Received(message) => {
                             let (public_key,mess_checked) = match SignedMessage::verify_and_decode(&message.content.to_vec()){
@@ -127,7 +129,7 @@ pub async fn runner(
                 }
             }
             Some(signer) = incoming.recv() =>{
-                error!("SIGNER ==> GOSSIP {:?}",signer);
+                // error!("SIGNER ==> GOSSIP {:?}",signer);
                 let sig_mess = SignedMessage::sign_and_encode(&secret, &signer)?;
                 let _ = tx.broadcast(sig_mess).await;
             }
@@ -139,10 +141,10 @@ pub async fn runner(
 
 pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     loop {
-        tokio::time::sleep(Duration::from_secs(5)).await;
         let message = SigningMessage::Hello;
         let sig_mess = SignedMessage::sign_and_encode(&secret_key, &message)?;
         let _ = tx.broadcast(sig_mess).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 
@@ -156,7 +158,7 @@ pub struct SigEvents {
 // Stolen from CHAT.
 // Message Structs
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SigningMessage {
     Init,
     Hello,
@@ -169,6 +171,9 @@ pub enum SigningMessage {
     Round2,
     Collect,
     Compare,
+    // peer event
+    PeerDown,
+    PeerUp,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

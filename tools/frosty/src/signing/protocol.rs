@@ -6,7 +6,7 @@ use frost_ed25519 as frost;
 use iroh::PublicKey;
 use n0_error::Result;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::{info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 
@@ -64,12 +64,24 @@ impl QuorumWatcher {
     async fn handle_event(&mut self, event: SigEvents) -> Result<()> {
         // NEEDS a global timeout.
         // Match for state machine
+        debug!("Event: {:#?}", event);
+        // Check for downed peers
+        if event.message == SigningMessage::PeerDown {
+            error!("node down !!! : {:}", &event.id.fmt_short());
+            self.online_peers.remove(&event.id);
+            if self.online_peers.len() < (self.config.min() - 1) {
+                self.state = QuorumSteps::Preparty;
+                return Ok(());
+            }
+        }
         match &self.state {
             QuorumSteps::Preparty => {
                 warn!("PreParty");
+                // wave to everyone.
+                // let _ = self.outgoing.send(SigningMessage::Waves).await;
                 // Collect the IDs,
                 println!("{:?}", &event);
-                if self.peers.contains(&event.id) {
+                if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {
                     info!("adding peer {:?}", &event.id);
                     self.online_peers.insert(event.id);
                 }
@@ -83,40 +95,21 @@ impl QuorumWatcher {
             }
             QuorumSteps::Init => {
                 warn!("Init Mode");
-                self.outgoing.send(SigningMessage::Waves).await;
+                let _ = self.outgoing.send(SigningMessage::Init).await;
                 self.state = QuorumSteps::Quorum;
             }
             QuorumSteps::Quorum => {
                 warn!("Quorum Mode");
+                debug!("event : {:?}", event);
             }
             QuorumSteps::Consensus => todo!(),
         }
-        //         SigningMessage::Init => {
-        //     // Collect the IDs,
-        //     self.online_peers.insert(event.id);
-        //     warn!("{:#?}", self.online_peers);
-        //     if self.peers.eq(&self.online_peers) {
-        //         self.state = SigningMessage::Hello;
-        //     }
-        // }
-        // SigningMessage::Hello => {
-        //     info!("MODE HELLO");
-        //     let _ = self.outgoing.send(SigningMessage::Waves).await;
-        //     self.state = SigningMessage::Waves;
-        // }
-        // SigningMessage::Waves => {
-        //     info!("MODE WAVES");
-        // },
-        // SigningMessage::Start { .. } => {},
-        // SigningMessage::Round1 => todo!(),
-        // SigningMessage::Round2 => todo!(),
-        // SigningMessage::Collect => todo!(),
-        // SigningMessage::Compare => todo!(),
         Ok(())
     }
 }
 
 pub async fn run(mut s: QuorumWatcher) -> Result<()> {
+    let _ = s.outgoing.send(SigningMessage::Hello).await;
     loop {
         while let Some(item) = s.incoming.recv().await {
             // info!("incoming in signer {:?}", item);
