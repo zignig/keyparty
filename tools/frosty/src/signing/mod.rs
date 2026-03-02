@@ -16,13 +16,15 @@ use iroh_gossip::{
 use n0_error::{AnyError, Result};
 use n0_future::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::{cli::Args, config::Config};
 
 mod auth;
 mod protocol;
+mod signer;
 
+// Init and run the signing party.
 pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
     info!("-- Start the signing party --");
 
@@ -46,14 +48,15 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         .spawn();
 
     // Gossip bits
-    // let topic = config.public_key();
+    // TODO fix this topic
     let topic_id = TopicId::from_bytes([5; 32]);
 
     let peers = config.clone().secondaries();
 
     for peer in peers.iter() {
-        info!("Waiting for peer : {:?}", peer);
+        info!("Waiting for peer : {:}", peer.fmt_short());
     }
+
     let goss = gossip.subscribe_and_join(topic_id, peers).await?;
     let secret = config.secret().clone();
     let (tx, rx) = goss.split();
@@ -64,8 +67,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 
     // Create the signer
     let peers = config.clone().peers();
-    let signer =
-        protocol::QuorumWatcher::new(config.clone(), message, from_signer, to_signer, peers);
+    let signer = protocol::QuorumWatcher::new(config.clone(), from_signer, to_signer, peers);
 
     tokio::spawn(protocol::run(signer));
 
@@ -77,7 +79,21 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         secret.clone(),
     ));
 
-    tokio::spawn(booper(tx, secret));
+    tokio::spawn(booper(tx.clone(), secret.clone()));
+
+    if let Some(message) = message.clone() {
+        // let message = SigningMessage::Start {
+        //     transaction_id: chrono::Utc::now().timestamp_millis(),
+        //     message: message.clone(),
+        // };
+        // let sig_mess = SignedMessage::sign_and_encode(&secret, &message).expect("bad mesasge");
+        // let _ = tx.broadcast(sig_mess).await;
+        tokio::spawn(message_boop(
+            tx.clone(),
+            config.secondary().clone(),
+            message,
+        ));
+    }
 
     tokio::signal::ctrl_c().await?;
 
@@ -136,12 +152,25 @@ pub async fn runner(
 
         }
     }
-    Ok(())
 }
 
 pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
+    warn!("start booper");
     loop {
         let message = SigningMessage::Hello;
+        let sig_mess = SignedMessage::sign_and_encode(&secret_key, &message)?;
+        let _ = tx.broadcast(sig_mess).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+pub async fn message_boop(tx: GossipSender, secret_key: SecretKey, message: Bytes) -> Result<()> {
+    warn!("start message booper");
+    loop {
+        let message = SigningMessage::Start {
+            transaction_id: chrono::Utc::now().timestamp_millis(),
+            message: message.clone(),
+        };
         let sig_mess = SignedMessage::sign_and_encode(&secret_key, &message)?;
         let _ = tx.broadcast(sig_mess).await;
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -163,11 +192,8 @@ pub enum SigningMessage {
     Init,
     Hello,
     Waves,
-    Start {
-        transaction_id: String,
-        message: String,
-    },
-    Round1,
+    Start { transaction_id: i64, message: Bytes },
+    Round1 { transaction_id: i64 },
     Round2,
     Collect,
     Compare,

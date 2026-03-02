@@ -97,6 +97,7 @@ impl Config {
         self.save();
     }
 
+    #[allow(dead_code)]
     pub fn public_key(&self) -> Option<VerifyingKey> {
         self.verify_key
     }

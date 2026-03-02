@@ -2,11 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bytes::Bytes;
 // Actor and support for the signing sequence
-use frost_ed25519 as frost;
+// use frost_ed25519 as frost;
 use iroh::PublicKey;
 use n0_error::Result;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::config::Config;
 
@@ -28,6 +28,7 @@ pub struct QuorumWatcher {
     outgoing: Sender<SigningMessage>,
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
+    transactions: BTreeMap<i64, PublicKey>,
     // Round 1
     // nonce: Option<frost::round1::SigningNonces>,
     // round1_commitments: Option<BTreeMap<PublicKey, frost::round1::SigningCommitments>>,
@@ -37,15 +38,10 @@ pub struct QuorumWatcher {
 impl QuorumWatcher {
     pub fn new(
         config: Config,
-        message: Option<Bytes>,
         outgoing: Sender<SigningMessage>,
         incoming: Receiver<SigEvents>,
         peers_vec: Vec<PublicKey>,
     ) -> Self {
-        warn!("message : {:?}", message);
-        // let transact = chrono::Utc::now()
-        //     .timestamp_nanos_opt()
-        //     .expect("time does not exist");
         let mut peer_set: BTreeSet<PublicKey> = Default::default();
         for peer in peers_vec.iter() {
             peer_set.insert(*peer);
@@ -57,6 +53,7 @@ impl QuorumWatcher {
             outgoing,
             peers: peer_set,
             online_peers: Default::default(),
+            transactions: Default::default(),
         }
     }
 
@@ -67,9 +64,11 @@ impl QuorumWatcher {
         debug!("Event: {:#?}", event);
         // Check for downed peers
         if event.message == SigningMessage::PeerDown {
-            error!("node down !!! : {:}", &event.id.fmt_short());
+            warn!("node down !!! : {:}", &event.id.fmt_short());
             self.online_peers.remove(&event.id);
-            if self.online_peers.len() < (self.config.min() - 1) {
+            warn!("{:#?}", &self.online_peers);
+            if self.online_peers.len() <= (self.config.min() - 1) {
+                warn!("quorum lost!");
                 self.state = QuorumSteps::Preparty;
                 return Ok(());
             }
@@ -90,7 +89,7 @@ impl QuorumWatcher {
                     self.state = QuorumSteps::Init;
                 }
                 // if self.peers.eq(&self.online_peers) {
-                //     self.state = QuorumSteps::Init;
+                //     self.state = QuorumSteps::Consensus;
                 // }
             }
             QuorumSteps::Init => {
@@ -100,9 +99,31 @@ impl QuorumWatcher {
             }
             QuorumSteps::Quorum => {
                 warn!("Quorum Mode");
-                debug!("event : {:?}", event);
+                info!("event : {:#?}", event);
+                info!("transactions : {:?}", self.transactions);
+                match event.message {
+                    SigningMessage::Start {
+                        transaction_id,
+                        message,
+                    } => {
+                        self.transactions.insert(transaction_id, event.id);
+                        let _ = self
+                            .outgoing
+                            .send(SigningMessage::Round1 {
+                                transaction_id: transaction_id,
+                            })
+                            .await;
+                    }
+                    SigningMessage::Round1 { transaction_id } => {
+                        if self.transactions.contains_key(&transaction_id) {
+                            warn!("have the transaction , round 1 !!!! ");
+                            self.transactions.remove(&transaction_id);
+                        }
+                    }
+                    _ => {}
+                }
             }
-            QuorumSteps::Consensus => todo!(),
+            QuorumSteps::Consensus => {}
         }
         Ok(())
     }

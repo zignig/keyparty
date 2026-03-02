@@ -350,7 +350,7 @@ impl DistributedKeyGeneration {
                     }
                     let sec_id = self.config.secondary().public();
                     let sec = self.local_rpc.fetch_secondary(Some(sec_id)).await?;
-                    error!("secondary keys {:?}",sec);
+                    debug!("secondary keys {:?}",sec);
                     self.config.save_secondary(sec);
 
                     self.state = ProcessSteps::Finish;
