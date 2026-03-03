@@ -174,7 +174,7 @@ impl DistributedKeyGeneration {
                 }
                 // Fetch each of the packages from each of the nodes
                 ProcessSteps::Part1Fetch => {
-                    info!("Check that each client has enough packs");
+                    info!("Check pack count");
                     let mut exit = false;
                     let mut round1_count: BTreeMap<PublicKey, usize> = Default::default();
                     while !exit {
@@ -204,7 +204,7 @@ impl DistributedKeyGeneration {
                 ProcessSteps::Part1Check => {
                     info!("Part 1 Check");
                     self.check_round1()?;
-                    info!("Check OK");
+                    info!("Packages Ok");
                     self.state = ProcessSteps::Part2Build;
                     continue;
                 }
@@ -367,7 +367,7 @@ impl DistributedKeyGeneration {
     }
 
     fn check_round1(&self) -> Result<()> {
-        info!("check that all the round 1 packages are equivilent");
+        info!("Compare packs.");
         let mut clumped: BTreeMap<PublicKey, Vec<R1package>> = Default::default();
         for (peer, peer_map) in self.round1.iter() {
             debug!("map check {:?} -- {:?}", peer, peer_map.len());

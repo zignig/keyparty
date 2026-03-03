@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bytes::Bytes;
 // Actor and support for the signing sequence
 // use frost_ed25519 as frost;
 use iroh::PublicKey;
 use n0_error::Result;
+use n0_future::FuturesUnordered;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{debug, info, warn};
 
@@ -29,6 +29,7 @@ pub struct QuorumWatcher {
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
     transactions: BTreeMap<i64, PublicKey>,
+    tasks : FuturesUnordered::<n0_future::boxed::BoxFuture<()>>
     // Round 1
     // nonce: Option<frost::round1::SigningNonces>,
     // round1_commitments: Option<BTreeMap<PublicKey, frost::round1::SigningCommitments>>,
@@ -54,6 +55,7 @@ impl QuorumWatcher {
             peers: peer_set,
             online_peers: Default::default(),
             transactions: Default::default(),
+            tasks: FuturesUnordered::<n0_future::boxed::BoxFuture<()>>::new()
         }
     }
 

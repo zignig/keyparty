@@ -102,6 +102,8 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     Ok(())
 }
 
+
+// Gossip runner
 pub async fn runner(
     tx: GossipSender,
     mut rx: GossipReceiver,
