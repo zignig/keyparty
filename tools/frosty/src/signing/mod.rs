@@ -59,6 +59,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 
     let goss = gossip.subscribe_and_join(topic_id, peers).await?;
     let secret = config.secret().clone();
+    let my_id = secret.public();
     let (tx, rx) = goss.split();
 
     // Messages between actors
@@ -69,12 +70,12 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     let peers = config.clone().peers();
     let signer = protocol::QuorumWatcher::new(config.clone(), from_signer, to_signer, peers);
 
-    tokio::spawn(protocol::run(signer));
+    tokio::spawn(signer.run());
 
     tokio::spawn(runner(
         tx.clone(),
         rx,
-        from_gossip,
+        from_gossip.clone(),
         to_gossip,
         secret.clone(),
     ));
@@ -89,8 +90,8 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         // let sig_mess = SignedMessage::sign_and_encode(&secret, &message).expect("bad mesasge");
         // let _ = tx.broadcast(sig_mess).await;
         tokio::spawn(message_boop(
-            tx.clone(),
-            config.secondary().clone(),
+            my_id.clone(),
+            from_gossip,
             message,
         ));
     }
@@ -101,7 +102,6 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 
     Ok(())
 }
-
 
 // Gossip runner
 pub async fn runner(
@@ -166,15 +166,19 @@ pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     }
 }
 
-pub async fn message_boop(tx: GossipSender, secret_key: SecretKey, message: Bytes) -> Result<()> {
+pub async fn message_boop(
+    id: PublicKey,
+    tx: Sender<SigEvents>,
+    message: Bytes,
+) -> Result<()> {
     warn!("start message booper");
     loop {
         let message = SigningMessage::Start {
             transaction_id: chrono::Utc::now().timestamp_millis(),
             message: message.clone(),
         };
-        let sig_mess = SignedMessage::sign_and_encode(&secret_key, &message)?;
-        let _ = tx.broadcast(sig_mess).await;
+        let sig_m = SigEvents { id, message };
+        let _ = tx.send(sig_m).await;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }

@@ -3,12 +3,15 @@ use std::collections::{BTreeMap, BTreeSet};
 // Actor and support for the signing sequence
 // use frost_ed25519 as frost;
 use iroh::PublicKey;
+use n0_error::AnyError;
 use n0_error::Result;
 use n0_future::FuturesUnordered;
+use n0_future::StreamExt;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::signing::signer::SignerTask;
 
 use super::{SigEvents, SigningMessage};
 
@@ -29,11 +32,7 @@ pub struct QuorumWatcher {
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
     transactions: BTreeMap<i64, PublicKey>,
-    tasks : FuturesUnordered::<n0_future::boxed::BoxFuture<()>>
-    // Round 1
-    // nonce: Option<frost::round1::SigningNonces>,
-    // round1_commitments: Option<BTreeMap<PublicKey, frost::round1::SigningCommitments>>,
-    // message: Option<Bytes>,
+    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64, AnyError>>>,
 }
 
 impl QuorumWatcher {
@@ -55,7 +54,7 @@ impl QuorumWatcher {
             peers: peer_set,
             online_peers: Default::default(),
             transactions: Default::default(),
-            tasks: FuturesUnordered::<n0_future::boxed::BoxFuture<()>>::new()
+            tasks: FuturesUnordered::<n0_future::boxed::BoxFuture<Result<i64, AnyError>>>::new(),
         }
     }
 
@@ -101,25 +100,32 @@ impl QuorumWatcher {
             }
             QuorumSteps::Quorum => {
                 warn!("Quorum Mode");
-                info!("event : {:#?}", event);
+                // info!("event : {:#?}", event);
                 info!("transactions : {:?}", self.transactions);
                 match event.message {
                     SigningMessage::Start {
                         transaction_id,
                         message,
                     } => {
-                        self.transactions.insert(transaction_id, event.id);
-                        let _ = self
-                            .outgoing
-                            .send(SigningMessage::Round1 {
-                                transaction_id: transaction_id,
-                            })
-                            .await;
-                    }
-                    SigningMessage::Round1 { transaction_id } => {
-                        if self.transactions.contains_key(&transaction_id) {
-                            warn!("have the transaction , round 1 !!!! ");
-                            self.transactions.remove(&transaction_id);
+                        // TODO fix up the logic here
+                        // put incoming , map and route the
+                        if !self.transactions.contains_key(&transaction_id) {
+                            warn!("create the task");
+
+                            let s = SignerTask::new(
+                                transaction_id,
+                                message.clone(),
+                                self.outgoing.clone(),
+                            );
+                            self.tasks.push(Box::pin(s.run()));
+                            self.transactions.insert(transaction_id, event.id);
+                            let _ = self
+                                .outgoing
+                                .send(SigningMessage::Start {
+                                    transaction_id,
+                                    message,
+                                })
+                                .await;
                         }
                     }
                     _ => {}
@@ -129,14 +135,22 @@ impl QuorumWatcher {
         }
         Ok(())
     }
-}
 
-pub async fn run(mut s: QuorumWatcher) -> Result<()> {
-    let _ = s.outgoing.send(SigningMessage::Hello).await;
-    loop {
-        while let Some(item) = s.incoming.recv().await {
-            // info!("incoming in signer {:?}", item);
-            s.handle_event(item).await?
+    pub async fn run(mut self) -> Result<()> {
+        let _ = self.outgoing.send(SigningMessage::Hello).await;
+        loop {
+            tokio::select! {
+                Some(item) = self.incoming.recv() => {
+                    self.handle_event(item).await?
+                }
+                val = self.tasks.next(), if !self.tasks.is_empty() => {
+                    info!("task finish {:#?}",&val);
+                    if let Some(val) = val {
+                        let val = val?;
+                        self.transactions.remove(&val);
+                    }
+                }
+            }
         }
     }
 }
