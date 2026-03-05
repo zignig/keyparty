@@ -68,7 +68,8 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 
     // Create the signer
     let peers = config.clone().peers();
-    let signer = protocol::QuorumWatcher::new(config.clone(), from_signer, to_signer, peers);
+    let signer =
+        protocol::QuorumWatcher::new(my_id.clone(), config.clone(), from_signer, to_signer, peers);
 
     tokio::spawn(signer.run());
 
@@ -89,11 +90,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         // };
         // let sig_mess = SignedMessage::sign_and_encode(&secret, &message).expect("bad mesasge");
         // let _ = tx.broadcast(sig_mess).await;
-        tokio::spawn(message_boop(
-            my_id.clone(),
-            from_gossip,
-            message,
-        ));
+        tokio::spawn(message_boop(my_id.clone(), from_gossip, message));
     }
 
     tokio::signal::ctrl_c().await?;
@@ -166,11 +163,7 @@ pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     }
 }
 
-pub async fn message_boop(
-    id: PublicKey,
-    tx: Sender<SigEvents>,
-    message: Bytes,
-) -> Result<()> {
+pub async fn message_boop(id: PublicKey, tx: Sender<SigEvents>, message: Bytes) -> Result<()> {
     warn!("start message booper");
     loop {
         let message = SigningMessage::Start {
@@ -200,9 +193,9 @@ pub enum SigningMessage {
     Waves,
     Start { transaction_id: i64, message: Bytes },
     Round1 { transaction_id: i64 },
-    Round2,
-    Collect,
-    Compare,
+    Round2 { transaction_id: i64 },
+    Collect { transaction_id: i64 },
+    Compare { transaction_id: i64 },
     // peer event
     PeerDown,
     PeerUp,

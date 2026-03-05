@@ -25,18 +25,20 @@ pub enum QuorumSteps {
 
 #[derive(Debug)]
 pub struct QuorumWatcher {
+    my_id: PublicKey,
     config: Config,
     state: QuorumSteps,
     incoming: Receiver<SigEvents>,
     outgoing: Sender<SigningMessage>,
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
-    transactions: BTreeMap<i64, PublicKey>,
+    transactions: BTreeMap<i64, Sender<SigEvents>>,
     tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64, AnyError>>>,
 }
 
 impl QuorumWatcher {
     pub fn new(
+        my_id: PublicKey,
         config: Config,
         outgoing: Sender<SigningMessage>,
         incoming: Receiver<SigEvents>,
@@ -47,6 +49,7 @@ impl QuorumWatcher {
             peer_set.insert(*peer);
         }
         Self {
+            my_id,
             config,
             state: QuorumSteps::Preparty,
             incoming,
@@ -99,9 +102,9 @@ impl QuorumWatcher {
                 self.state = QuorumSteps::Quorum;
             }
             QuorumSteps::Quorum => {
-                warn!("Quorum Mode");
+                debug!("Quorum Mode");
                 // info!("event : {:#?}", event);
-                info!("transactions : {:?}", self.transactions);
+                debug!("transactions : {:?}", self.transactions);
                 match event.message {
                     SigningMessage::Start {
                         transaction_id,
@@ -112,13 +115,14 @@ impl QuorumWatcher {
                         if !self.transactions.contains_key(&transaction_id) {
                             warn!("create the task");
 
-                            let s = SignerTask::new(
+                            let (tx, s) = SignerTask::new(
+                                self.my_id,
                                 transaction_id,
                                 message.clone(),
                                 self.outgoing.clone(),
-                            );
+                            ).await;
                             self.tasks.push(Box::pin(s.run()));
-                            self.transactions.insert(transaction_id, event.id);
+                            self.transactions.insert(transaction_id, tx);
                             let _ = self
                                 .outgoing
                                 .send(SigningMessage::Start {
@@ -128,6 +132,12 @@ impl QuorumWatcher {
                                 .await;
                         }
                     }
+                    SigningMessage::Round1 { transaction_id } => {
+                        self.route(transaction_id.clone(), event.clone()).await?
+                    }
+                    SigningMessage::Round2 { transaction_id } => todo!(),
+                    SigningMessage::Collect { transaction_id } => todo!(),
+                    SigningMessage::Compare { transaction_id } => todo!(),
                     _ => {}
                 }
             }
@@ -136,6 +146,12 @@ impl QuorumWatcher {
         Ok(())
     }
 
+    pub async fn route(&mut self, transaction_id: i64, event: SigEvents) -> Result<(),AnyError> {
+        if let Some(tx) = self.transactions.get(&transaction_id) {
+            tx.send(event).await.expect("bad routing");
+        }
+        Ok(())
+    }
     pub async fn run(mut self) -> Result<()> {
         let _ = self.outgoing.send(SigningMessage::Hello).await;
         loop {

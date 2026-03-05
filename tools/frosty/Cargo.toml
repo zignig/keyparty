@@ -9,7 +9,7 @@ iroh = { version = "0.95.1", features = ["discovery-local-network"] }
 iroh-gossip = "0.95.0"
 toml = "0.9.8"
 snafu = "0.8.6"
-tokio = { version = "1.45.1", features = ["io-util", "sync"] }
+tokio = { version = "1.45.1", features = ["full"] }
 tracing-subscriber = "0.3.19"
 clap = "4.5.54"
 clap_derive = "4.5.49"
