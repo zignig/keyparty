@@ -80,8 +80,6 @@ impl QuorumWatcher {
         match &self.state {
             QuorumSteps::Preparty => {
                 warn!("PreParty");
-                // wave to everyone.
-                // let _ = self.outgoing.send(SigningMessage::Waves).await;
                 // Collect the IDs,
                 println!("{:?}", &event);
                 if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {

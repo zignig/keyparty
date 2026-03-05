@@ -7,6 +7,8 @@ use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{error, warn};
 
+// s
+
 use crate::signing::{SigEvents, SignedMessage, SigningMessage};
 
 // Simple verstion of the state (actual data is contained in messges)
@@ -23,6 +25,7 @@ pub struct SignerTask {
     state: SState,
     incoming: Receiver<SigEvents>,
     outgoing: Sender<SigningMessage>,
+
 }
 
 impl SignerTask {
@@ -58,7 +61,7 @@ impl SignerTask {
     async fn handle_event(&mut self, event: SigEvents) -> Result<(), AnyError> {
         match self.state {
             SState::Start => {
-                error!("start transaction");
+                error!("start transaction {:?}",&self.transaction_id);
                 self.outgoing
                     .send(SigningMessage::Round1 {
                         transaction_id: self.transaction_id,
@@ -81,7 +84,7 @@ impl SignerTask {
         loop {
             tokio::select! {
                 Some(event)  = self.incoming.recv() => {
-                    error!("signing interior {:#?}",&event);
+                    // error!("signing interior {:#?}",&event);
                     self.handle_event(event).await?;
                 },
                 _ = &mut timeout => {
