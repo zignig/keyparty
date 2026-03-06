@@ -1,5 +1,6 @@
 # Some todo stuff 
 
+1. harden endpoints and process to make it hard to cheat.
 1. change name to keyparty.
 1. move the key generation data into it's own struct.
 1. add finished event to drop the key gen structs.

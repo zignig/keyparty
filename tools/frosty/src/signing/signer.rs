@@ -9,7 +9,7 @@ use tracing::{error, warn};
 
 // s
 
-use crate::signing::{SigEvents, SignedMessage, SigningMessage};
+use crate::signing::{SigEvents, SigningMessage};
 
 // Simple verstion of the state (actual data is contained in messges)
 #[derive(Debug)]

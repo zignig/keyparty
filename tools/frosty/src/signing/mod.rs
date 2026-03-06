@@ -71,8 +71,10 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     let signer =
         protocol::QuorumWatcher::new(my_id.clone(), config.clone(), from_signer, to_signer, peers);
 
+    // Start the signer.
     tokio::spawn(signer.run());
 
+    // Start the gossip interface.
     tokio::spawn(runner(
         tx.clone(),
         rx,
@@ -81,18 +83,15 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         secret.clone(),
     ));
 
+    // Bounce some messages 
     tokio::spawn(booper(tx.clone(), secret.clone()));
 
+    // If there is signage , inject some messages.
     if let Some(message) = message.clone() {
-        // let message = SigningMessage::Start {
-        //     transaction_id: chrono::Utc::now().timestamp_millis(),
-        //     message: message.clone(),
-        // };
-        // let sig_mess = SignedMessage::sign_and_encode(&secret, &message).expect("bad mesasge");
-        // let _ = tx.broadcast(sig_mess).await;
         tokio::spawn(message_boop(my_id.clone(), from_gossip, message));
     }
 
+    // Wait for exit.
     tokio::signal::ctrl_c().await?;
 
     let _ = router.shutdown().await;
@@ -101,6 +100,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 }
 
 // Gossip runner
+// This shares messages to all participants.
 pub async fn runner(
     tx: GossipSender,
     mut rx: GossipReceiver,
@@ -109,9 +109,6 @@ pub async fn runner(
     secret: SecretKey,
 ) -> Result<(), AnyError> {
     // Select on the events
-    // from gossip
-    // from local irpc
-    // from elsewhere...
     loop {
         tokio::select! {
             biased;
@@ -136,6 +133,7 @@ pub async fn runner(
                                     continue;
                                 }
                             };
+                            // TODO harden, check for good nodes.
                             outgoing.send(SigEvents{id : public_key,message : mess_checked.clone()}).await.expect("send to sig failed");
                             debug!("message {} => {:?}",public_key.fmt_short(),mess_checked);
                         }
@@ -143,6 +141,7 @@ pub async fn runner(
                     }
                 }
             }
+            // Incoming message from signer.
             Some(signer) = incoming.recv() =>{
                 // error!("SIGNER ==> GOSSIP {:?}",signer);
                 let sig_mess = SignedMessage::sign_and_encode(&secret, &signer)?;
@@ -153,6 +152,7 @@ pub async fn runner(
     }
 }
 
+// Chuch a hello onto the gossip.
 pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     warn!("start booper");
     loop {
@@ -163,6 +163,8 @@ pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     }
 }
 
+
+// TODO  , inject some messages for testing.
 pub async fn message_boop(id: PublicKey, tx: Sender<SigEvents>, message: Bytes) -> Result<()> {
     warn!("start message booper");
     loop {
@@ -176,7 +178,7 @@ pub async fn message_boop(id: PublicKey, tx: Sender<SigEvents>, message: Bytes) 
     }
 }
 
-// Transfer messages
+// Interprocess messages , 
 #[derive(Clone, Debug)]
 pub struct SigEvents {
     id: PublicKey,
@@ -184,13 +186,17 @@ pub struct SigEvents {
 }
 
 // Stolen from CHAT.
+// 
 // Message Structs
+// https://frost.zfnd.org/tutorial/signing.html for info.
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SigningMessage {
     Init,
     Hello,
     Waves,
+    // This needs signing structs
+    // 
     Start { transaction_id: i64, message: Bytes },
     Round1 { transaction_id: i64 },
     Round2 { transaction_id: i64 },
@@ -201,6 +207,7 @@ pub enum SigningMessage {
     PeerUp,
 }
 
+// Messages signed with endpoing secrect...
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SignedMessage {
     from: PublicKey,

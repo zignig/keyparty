@@ -37,6 +37,7 @@ pub struct QuorumWatcher {
 }
 
 impl QuorumWatcher {
+    // Make a new one.
     pub fn new(
         my_id: PublicKey,
         config: Config,
@@ -63,7 +64,6 @@ impl QuorumWatcher {
 
     // Need a diagram of the signing flow
     async fn handle_event(&mut self, event: SigEvents) -> Result<()> {
-        // NEEDS a global timeout.
         // Match for state machine
         debug!("Event: {:#?}", event);
         // Check for downed peers
@@ -144,12 +144,14 @@ impl QuorumWatcher {
         Ok(())
     }
 
+    // take a message and route it to a running transaction.
     pub async fn route(&mut self, transaction_id: i64, event: SigEvents) -> Result<(),AnyError> {
         if let Some(tx) = self.transactions.get(&transaction_id) {
             tx.send(event).await.expect("bad routing");
         }
         Ok(())
     }
+
     pub async fn run(mut self) -> Result<()> {
         let _ = self.outgoing.send(SigningMessage::Hello).await;
         loop {
