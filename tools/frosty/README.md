@@ -9,7 +9,7 @@ Using iroh , irpc it will create a set of key segments and endpoints and do all 
 
 In the frost folder...
 ```
-> cargo run server token 
+> cargo run generate "token"
 ```
 
 where "token" is an auth string, this will give you a frost token 
@@ -21,13 +21,18 @@ frostysorelsfb2zbrj6dz7pvxqwnhsuhujiouvtdbbwhqw5b7hmeamtxaiytpojvqgaq
 then from another machine or folder with the frosty binary
 
 ```
-./frosty client frostysorelsfb2zbrj6dz7pvxqwnhsuhujiouvtdbbwhqw5b7hmeamtxaiytpojvqgaq
+./frosty join frostysorelsfb2zbrj6dz7pvxqwnhsuhujiouvtdbbwhqw5b7hmeamtxaiytpojvqgaq
 ```
 
 The program will connect , and wait until there are enough friends and then run through the
 distributed key generation sequence.
 
+It will then save primary and secondary keys endpoint keys , with keymatter into frosty.toml.
+
+
 ## TODO 
+
+This is in process, it turns out to be a little more complicated that expected.
 
 Automated signing on [https://frost.zfnd.org/tutorial/signing.html](https://frost.zfnd.org/tutorial/signing.html) with a gossip channel is next.
 

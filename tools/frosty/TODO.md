@@ -7,8 +7,6 @@
 1. integrate rcan construction
     1. use as a rcan anchor , and sign subkeys
     2. distribute rcan chains
-1. check and save max and min shares
-1. change the wait times to minimise the sequence time.
 
 ## Signing
 
@@ -38,3 +36,6 @@
 
 1. new config file just creates the secret key
 1. Split into keyparty and signer.
+1. change the wait times to minimise the sequence time.
+1. check and save max and min shares
+
