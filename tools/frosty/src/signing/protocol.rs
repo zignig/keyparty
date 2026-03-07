@@ -13,17 +13,19 @@ use tracing::error;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::signing;
+use crate::signing::SigEvent;
+use crate::signing::TransMessage;
 use crate::signing::now;
 use crate::signing::signer::SignerTask;
 
-use super::{SigEvents, SigningMessage};
+use super::{GossipMessage, SigEvents};
 
 #[derive(Debug)]
 pub enum QuorumSteps {
-    Preparty,
     Init,
+    Preparty,
     Quorum,
-    Consensus,
 }
 
 #[derive(Debug)]
@@ -32,10 +34,10 @@ pub struct QuorumWatcher {
     config: Config,
     state: QuorumSteps,
     incoming: Receiver<SigEvents>,
-    outgoing: Sender<SigningMessage>,
+    outgoing: Sender<GossipMessage>,
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
-    transactions: BTreeMap<i64, Sender<SigEvents>>,
+    transactions: BTreeMap<i64, Sender<(PublicKey,TransMessage)>>,
     tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64, AnyError>>>,
     key_package: Option<KeyPackage>,
 }
@@ -45,7 +47,7 @@ impl QuorumWatcher {
     pub fn new(
         my_id: PublicKey,
         config: Config,
-        outgoing: Sender<SigningMessage>,
+        outgoing: Sender<GossipMessage>,
         incoming: Receiver<SigEvents>,
         peers_vec: Vec<PublicKey>,
     ) -> Self {
@@ -73,7 +75,7 @@ impl QuorumWatcher {
     async fn handle_event(&mut self, event: SigEvents) -> Result<()> {
         // Match for state machine
         // Check for downed peers
-        if event.message == SigningMessage::PeerDown {
+        if event.message == GossipMessage::PeerDown {
             warn!("node down !!! : {:}", &event.id.fmt_short());
             self.online_peers.remove(&event.id);
             warn!("{:#?}", &self.online_peers);
@@ -85,6 +87,11 @@ impl QuorumWatcher {
         }
 
         match &self.state {
+            QuorumSteps::Init => {
+                warn!("Init Mode");
+                let _ = self.outgoing.send(GossipMessage::Init).await;
+                self.state = QuorumSteps::Preparty;
+            }
             QuorumSteps::Preparty => {
                 warn!("PreParty");
                 // Collect the IDs,
@@ -95,17 +102,10 @@ impl QuorumWatcher {
                 }
                 warn!("peers {:#?}", self.online_peers.len());
                 if self.online_peers.len() == (self.config.min() - 1) {
-                    self.state = QuorumSteps::Init;
+                    self.state = QuorumSteps::Quorum;
                 }
-                // if self.peers.eq(&self.online_peers) {
-                //     self.state = QuorumSteps::Consensus;
-                // }
             }
-            QuorumSteps::Init => {
-                warn!("Init Mode");
-                let _ = self.outgoing.send(SigningMessage::Init).await;
-                self.state = QuorumSteps::Quorum;
-            }
+
             QuorumSteps::Quorum => {
                 debug!("Quorum Mode");
 
@@ -115,68 +115,70 @@ impl QuorumWatcher {
                 };
 
                 debug!("transactions : {:?}", self.transactions.keys());
-                info!("event: {:#?}", &event.message);
+                debug!("event: {:#?}", &event.message);
                 match event.message {
-                    SigningMessage::Start {
-                        transaction_id,
-                        message,
-                    } => {
-                        // TODO fix up the logic here
-                        // put incoming , map and route the
-                        if !self.transactions.contains_key(&transaction_id) {
-                            warn!("create the task");
+                    GossipMessage::Init => todo!(),
+                    GossipMessage::Hello { timestamp } => {
+                        debug!("hello {}", timestamp)
+                    }
+                    GossipMessage::Event { message } => {
+                        let transaction_id = message.transaction_id;
+                        let id = event.id;
+                        match &message.event {
+                            SigEvent::Start { sig_message } => {
+                                // this starts an actor on each endpoint
+                                // through redirection
+                                if !self.transactions.contains_key(&transaction_id) {
+                                    warn!("create the task");
 
-                            let (tx, s) = SignerTask::new(
-                                self.my_id,
-                                transaction_id,
-                                message.clone(),
-                                self.outgoing.clone(),
-                                self.key_package.clone(),
-                            )
-                            .await;
-                            // push the start into the new signer
-                            let _ = tx
-                                .send(SigEvents {
-                                    id: self.my_id,
-                                    message: SigningMessage::Start {
+                                    let (tx, s) = SignerTask::new(
+                                        self.my_id,
                                         transaction_id,
-                                        message,
-                                    },
-                                })
-                                .await;
-                            self.tasks.push(Box::pin(s.run()));
-                            self.transactions.insert(transaction_id, tx);
-                        } else {
-                            error!("Double start {}", transaction_id);
+                                        sig_message.clone(),
+                                        self.outgoing.clone(),
+                                        self.key_package.clone(),
+                                    )
+                                    .await;
+                                    // push the start into the new signer
+                                    let _ = tx
+                                        .send((id,message))
+                                        .await;
+                                    self.tasks.push(Box::pin(s.run()));
+                                    self.transactions.insert(transaction_id, tx);
+                                } else {
+                                    error!("Double start {}", transaction_id);
+                                }
+                            }
+                            // Route everything but the start into the actor
+                            _ => { 
+                                self.route(id,message).await?;
+                            }
+                            // SigEvent::Round1 => todo!(),
+                            // SigEvent::Round2 => todo!(),
+                            // SigEvent::Collect => todo!(),
+                            // SigEvent::Compare => todo!(),
                         }
                     }
-                    SigningMessage::Round1 { transaction_id } => {
-                        warn!("round 1 {}", transaction_id);
-                        self.route(transaction_id.clone(), event.clone()).await?
-                    }
-                    SigningMessage::Round2 { transaction_id } => todo!(),
-                    SigningMessage::Collect { transaction_id } => todo!(),
-                    SigningMessage::Compare { transaction_id } => todo!(),
                     _ => {}
                 }
             }
-            QuorumSteps::Consensus => {}
         }
         Ok(())
     }
 
     // take a message and route it to a running transaction.
-    pub async fn route(&mut self, transaction_id: i64, event: SigEvents) -> Result<(), AnyError> {
-        if let Some(tx) = self.transactions.get(&transaction_id) {
-            tx.send(event).await.expect("bad routing");
+    pub async fn route(&mut self,id: PublicKey, event: TransMessage) -> Result<(), AnyError> {
+        if let Some(tx) = self.transactions.get(&event.transaction_id) {
+            tx.send((id,event)).await.expect("bad routing");
         }
         Ok(())
     }
 
     pub async fn run(mut self) -> Result<()> {
+        // Say hello to everyone.
         let _ = self
             .outgoing
-            .send(SigningMessage::Hello { timestamp: now() })
+            .send(GossipMessage::Hello { timestamp: now() })
             .await;
         loop {
             tokio::select! {

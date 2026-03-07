@@ -26,6 +26,34 @@ mod signer;
 
 pub const BEACON_DURATION: u64 = 10u64;
 
+// Message Structs
+// https://frost.zfnd.org/tutorial/signing.html for info.
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SigEvent {
+    Start { sig_message: Bytes },
+    Round1,
+    Round2,
+    Collect,
+    Compare,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TransMessage {
+    transaction_id: i64,
+    event: SigEvent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum GossipMessage {
+    Init,
+    Hello { timestamp: i64 },
+    Waves,
+    Event { message: TransMessage },
+    PeerDown,
+    PeerUp,
+}
+
 // Init and run the signing party.
 pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
     info!("-- Start the signing party --");
@@ -66,7 +94,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 
     // Messages between actors
     let (from_gossip, to_signer) = tokio::sync::mpsc::channel::<SigEvents>(10);
-    let (from_signer, to_gossip) = tokio::sync::mpsc::channel::<SigningMessage>(10);
+    let (from_signer, to_gossip) = tokio::sync::mpsc::channel::<GossipMessage>(10);
 
     // Create the signer
     let peers = config.clone().peers();
@@ -90,7 +118,13 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
 
     // If there is signage , inject some messages.
     if let Some(message) = message.clone() {
-        tokio::spawn(message_boop(my_id.clone(), from_gossip, message));
+        tokio::spawn(message_boop(
+            my_id.clone(),
+            from_gossip,
+            tx.clone(),
+            secret.clone(),
+            message,
+        ));
     }
 
     // Wait for exit.
@@ -107,7 +141,7 @@ pub async fn runner(
     tx: GossipSender,
     mut rx: GossipReceiver,
     outgoing: Sender<SigEvents>,
-    mut incoming: Receiver<SigningMessage>,
+    mut incoming: Receiver<GossipMessage>,
     secret: SecretKey,
 ) -> Result<(), AnyError> {
     // Select on the events
@@ -121,11 +155,11 @@ pub async fn runner(
                     match event {
                         Event::NeighborUp(public_key) => {
                             println!("NeighborUp {:?}", public_key);
-                            let _ = outgoing.send(SigEvents { id: public_key, message: SigningMessage::PeerUp}).await;
+                            let _ = outgoing.send(SigEvents { id: public_key, message: GossipMessage::PeerUp}).await;
                         },
                         Event::NeighborDown(public_key) => {
                             println!("NeighborDown {:?}", public_key);
-                            let _ = outgoing.send(SigEvents { id: public_key, message: SigningMessage::PeerDown}).await;
+                            let _ = outgoing.send(SigEvents { id: public_key, message: GossipMessage::PeerDown}).await;
                         },
                         Event::Received(message) => {
                             let (public_key,mess_checked) = match SignedMessage::verify_and_decode(&message.content.to_vec()){
@@ -145,7 +179,7 @@ pub async fn runner(
             }
             // Incoming message from signer.
             Some(signer) = incoming.recv() =>{
-                error!("SIGNER ==> GOSSIP {:?}",signer);
+                debug!("SIGNER ==> GOSSIP {:?}",signer);
                 let sig_mess = SignedMessage::sign_and_encode(&secret, &signer)?;
                 let _ = tx.broadcast(sig_mess).await;
             }
@@ -158,7 +192,7 @@ pub async fn runner(
 pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     warn!("start beacon");
     loop {
-        let message = SigningMessage::Hello {
+        let message = GossipMessage::Hello {
             timestamp: chrono::Utc::now().timestamp_millis(),
         };
         let sig_mess = SignedMessage::sign_and_encode(&secret_key, &message)?;
@@ -168,16 +202,31 @@ pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
 }
 
 // TODO  , inject some messages for testing.
-pub async fn message_boop(id: PublicKey, tx: Sender<SigEvents>, message: Bytes) -> Result<()> {
+pub async fn message_boop(
+    id: PublicKey,
+    tx: Sender<SigEvents>,
+    gtx: GossipSender,
+    secret_key: SecretKey,
+    message: Bytes,
+) -> Result<()> {
     warn!("start message booper");
     loop {
-        let message = SigningMessage::Start {
-            transaction_id: now(),
-            message: message.clone(),
+        let gm = GossipMessage::Event {
+            message: TransMessage {
+                transaction_id: now(),
+                event: SigEvent::Start {
+                    sig_message: message.clone(),
+                },
+            },
         };
-        let sig_m = SigEvents { id, message };
+        // Send local
+        let sig_m = SigEvents { id, message: gm.clone() };
         let _ = tx.send(sig_m).await;
-        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        // Send to gossip
+        let g_mess = SignedMessage::sign_and_encode(&secret_key, &gm)?;
+        let _ = gtx.broadcast(g_mess).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
 
@@ -189,30 +238,11 @@ pub fn now() -> i64 {
 #[derive(Clone, Debug)]
 pub struct SigEvents {
     id: PublicKey,
-    message: SigningMessage,
+    message: GossipMessage,
 }
 
 // Stolen from CHAT.
 //
-// Message Structs
-// https://frost.zfnd.org/tutorial/signing.html for info.
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum SigningMessage {
-    Init,
-    Hello { timestamp: i64 },
-    Waves,
-    // This needs signing structs
-    //
-    Start { transaction_id: i64, message: Bytes },
-    Round1 { transaction_id: i64 },
-    Round2 { transaction_id: i64 },
-    Collect { transaction_id: i64 },
-    Compare { transaction_id: i64 },
-    // peer event
-    PeerDown,
-    PeerUp,
-}
 
 // Messages signed with endpoing secrect...
 #[derive(Debug, Serialize, Deserialize)]
@@ -224,17 +254,17 @@ pub struct SignedMessage {
 }
 
 impl SignedMessage {
-    pub fn verify_and_decode(bytes: &[u8]) -> Result<(PublicKey, SigningMessage)> {
+    pub fn verify_and_decode(bytes: &[u8]) -> Result<(PublicKey, GossipMessage)> {
         let signed_message: Self = postcard::from_bytes(bytes).expect("deser fail");
         let key: PublicKey = signed_message.from;
         key.verify(&signed_message.data, &signed_message.signature)
             .expect("verify fail");
-        let message: SigningMessage =
+        let message: GossipMessage =
             postcard::from_bytes(&signed_message.data).expect("postcard fail");
         Ok((signed_message.from, message))
     }
 
-    pub fn sign_and_encode(secret_key: &SecretKey, message: &SigningMessage) -> Result<Bytes> {
+    pub fn sign_and_encode(secret_key: &SecretKey, message: &GossipMessage) -> Result<Bytes> {
         let data: Bytes = postcard::to_stdvec(&message)
             .expect("postcard encode fail")
             .into();

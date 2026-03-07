@@ -6,40 +6,52 @@ use iroh::PublicKey;
 use n0_error::{AnyError, Result};
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 // s
 
-use crate::signing::{SigEvents, SigningMessage};
+use crate::signing::{GossipMessage, SigEvent, TransMessage};
 
 // Simple verstion of the state (actual data is contained in messges)
 #[derive(Debug)]
 enum SState {
     Start,
     Check,
+    Round1,
+    Round1Gather,
+    Round2,
+    Round2Gather,
+    Finished,
 }
 
+
+// TODO missing fields
+
+// online nodes 
+// round1/2 pacakges
+// nonces
+// just comms for now
 #[derive(Debug)]
 pub struct SignerTask {
     my_id: PublicKey,
     transaction_id: i64,
     message: Bytes,
     state: SState,
-    incoming: Receiver<SigEvents>,
-    outgoing: Sender<SigningMessage>,
+    incoming: Receiver<(PublicKey, TransMessage)>,
+    outgoing: Sender<GossipMessage>,
     key_pacakge: Option<KeyPackage>,
 }
 
 impl SignerTask {
-    const TIME_OUT: Duration = Duration::from_secs(20);
+    const TIME_OUT: Duration = Duration::from_secs(2);
     pub async fn new(
         my_id: PublicKey,
         transaction_id: i64,
         message: Bytes,
-        outgoing: Sender<SigningMessage>,
+        outgoing: Sender<GossipMessage>,
         key_pacakge: Option<KeyPackage>,
-    ) -> (Sender<SigEvents>, Self) {
-        let (tx, rx) = tokio::sync::mpsc::channel::<SigEvents>(5);
+    ) -> (Sender<(PublicKey, TransMessage)>, Self) {
+        let (tx, rx) = tokio::sync::mpsc::channel::<(PublicKey, TransMessage)>(5);
         let sel = Self {
             my_id,
             transaction_id,
@@ -49,55 +61,46 @@ impl SignerTask {
             outgoing,
             key_pacakge,
         };
-        // Send the inital event for local (gossip does not send to local)
-        // tx.send(SigEvents {
-        //     id: my_id,
-        //     message: SigningMessage::Start {
-        //         transaction_id,
-        //         message,
-        //     },
-        // })
-        // .await
-        // .expect("start event fail");
         (tx, sel)
     }
 
-    async fn send_out(&self, mess: SigningMessage) -> Result<()> {
-        info!("out message");
-        self.outgoing.send(mess).await.expect("bad out");
-        info!("out complete");
+    async fn send_out(&self, sigevent: SigEvent) -> Result<()> {
+        let gmessage = GossipMessage::Event {
+            message: TransMessage {
+                transaction_id: self.transaction_id,
+                event: sigevent,
+            },
+        };
+        self.outgoing.send(gmessage).await.expect("bad out");
         Ok(())
     }
 
-    async fn handle_event(&mut self, event: SigEvents) -> Result<(), AnyError> {
-        info!("{:?} ==> {:#?}", &self.state, &event);
+    async fn handle_event(&mut self, event: (PublicKey, TransMessage)) -> Result<(), AnyError> {
+        debug!("{:?} ==> {:#?}", &self.state, &event);
+        let ( id , mess ) = event;
+        // TODO fix this to track both state and message switch.
+        self.send_out(SigEvent::Compare).await?;
         match self.state {
             SState::Start => {
-                error!("start transaction {:?}", &self.transaction_id);
-                match &event.message {
-                    SigningMessage::Init => todo!(),
-                    SigningMessage::Hello { timestamp } => todo!(),
-                    SigningMessage::Waves => todo!(),
-                    SigningMessage::Start { .. } => {
-                        info!("pass transaction on");
-                        self.send_out(event.message.clone()).await?;
-                        self.state = SState::Check;
-                    }
-                    SigningMessage::Round1 { transaction_id } => todo!(),
-                    SigningMessage::Round2 { transaction_id } => todo!(),
-                    SigningMessage::Collect { transaction_id } => todo!(),
-                    SigningMessage::Compare { transaction_id } => todo!(),
-                    SigningMessage::PeerDown => todo!(),
-                    SigningMessage::PeerUp => todo!(),
-                }
+                info!("[signer] Start");
+                self.state = SState::Check;
             }
             SState::Check => {
-                error!("Check mode for {:?}", &self.transaction_id);
-                self.send_out(SigningMessage::Round1 {
-                    transaction_id: self.transaction_id,
-                })
-                .await?;
+                info!("[signer] Check");
+                self.state = SState::Round1;
             }
+            SState::Round1 => {
+                info!("[signer] Round1");
+                self.state = SState::Round1Gather
+            },
+            SState::Round1Gather => {
+                info!("[signer] Round1 Gather");
+                info!("{:} {:?}",id.fmt_short(),mess);
+                self.state = SState::Round2;
+            },
+            SState::Round2 => {},
+            SState::Round2Gather => todo!(),
+            SState::Finished => todo!(),
         }
         Ok(())
     }
