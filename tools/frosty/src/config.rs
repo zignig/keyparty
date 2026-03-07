@@ -1,6 +1,6 @@
-use frost_ed25519::VerifyingKey;
+use frost_ed25519::{VerifyingKey, keys::KeyPackage};
 use iroh::{PublicKey, SecretKey};
-use n0_error::{AnyError, Result};
+use n0_error::{AnyError, Result, anyerr};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
@@ -65,6 +65,18 @@ impl Config {
         self.save();
     }
 
+    pub fn get_key_pacakge(&self) -> Result<KeyPackage, AnyError> {
+        match &self.key_package {
+            Some(pack) => {
+                let r= data_encoding::BASE32_NOPAD.decode(pack.as_bytes()).expect("bad package");
+                let v: &[u8] = &r;
+                let val = KeyPackage::deserialize(v).expect("borked");
+                Ok(val)
+            }
+            None => Err(anyerr!("key package broken")),
+        }
+    }
+
     pub fn peers(self) -> Vec<PublicKey> {
         match self.peers {
             Some(peers) => peers,
@@ -106,7 +118,7 @@ impl Config {
         self.secondary_key.clone()
     }
 
-    pub fn save_secondary(&mut self,secondaries: Vec<PublicKey> ) { 
+    pub fn save_secondary(&mut self, secondaries: Vec<PublicKey>) {
         self.secondary_peers = Some(secondaries);
         self.save();
     }
@@ -115,8 +127,7 @@ impl Config {
         self.secret.clone()
     }
 
-    pub fn min(&self) -> usize { 
+    pub fn min(&self) -> usize {
         self.min as usize
     }
-
 }

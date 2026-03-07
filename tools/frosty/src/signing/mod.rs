@@ -24,6 +24,8 @@ mod auth;
 mod protocol;
 mod signer;
 
+pub const BEACON_DURATION: u64 = 10u64;
+
 // Init and run the signing party.
 pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
     info!("-- Start the signing party --");
@@ -83,8 +85,8 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         secret.clone(),
     ));
 
-    // Bounce some messages 
-    tokio::spawn(booper(tx.clone(), secret.clone()));
+    // Bounce some messages
+    tokio::spawn(beacon(tx.clone(), secret.clone()));
 
     // If there is signage , inject some messages.
     if let Some(message) = message.clone() {
@@ -143,7 +145,7 @@ pub async fn runner(
             }
             // Incoming message from signer.
             Some(signer) = incoming.recv() =>{
-                // error!("SIGNER ==> GOSSIP {:?}",signer);
+                error!("SIGNER ==> GOSSIP {:?}",signer);
                 let sig_mess = SignedMessage::sign_and_encode(&secret, &signer)?;
                 let _ = tx.broadcast(sig_mess).await;
             }
@@ -153,32 +155,37 @@ pub async fn runner(
 }
 
 // Chuch a hello onto the gossip.
-pub async fn booper(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
-    warn!("start booper");
+pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
+    warn!("start beacon");
     loop {
-        let message = SigningMessage::Hello;
+        let message = SigningMessage::Hello {
+            timestamp: chrono::Utc::now().timestamp_millis(),
+        };
         let sig_mess = SignedMessage::sign_and_encode(&secret_key, &message)?;
         let _ = tx.broadcast(sig_mess).await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(BEACON_DURATION)).await;
     }
 }
-
 
 // TODO  , inject some messages for testing.
 pub async fn message_boop(id: PublicKey, tx: Sender<SigEvents>, message: Bytes) -> Result<()> {
     warn!("start message booper");
     loop {
         let message = SigningMessage::Start {
-            transaction_id: chrono::Utc::now().timestamp_millis(),
+            transaction_id: now(),
             message: message.clone(),
         };
         let sig_m = SigEvents { id, message };
         let _ = tx.send(sig_m).await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
     }
 }
 
-// Interprocess messages , 
+pub fn now() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
+// Interprocess messages ,
 #[derive(Clone, Debug)]
 pub struct SigEvents {
     id: PublicKey,
@@ -186,17 +193,17 @@ pub struct SigEvents {
 }
 
 // Stolen from CHAT.
-// 
+//
 // Message Structs
 // https://frost.zfnd.org/tutorial/signing.html for info.
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SigningMessage {
     Init,
-    Hello,
+    Hello { timestamp: i64 },
     Waves,
     // This needs signing structs
-    // 
+    //
     Start { transaction_id: i64, message: Bytes },
     Round1 { transaction_id: i64 },
     Round2 { transaction_id: i64 },

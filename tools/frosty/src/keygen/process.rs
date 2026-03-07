@@ -307,19 +307,11 @@ impl DistributedKeyGeneration {
                     let key_share_vec = key_share.serialize().expect("bad keyshare serialization");
                     let public_share_vec =
                         public_share.serialize().expect("bad public serialization");
-                    // let verifying_vec = public_share
-                    //     .verifying_key()
-                    //     .serialize()
-                    //     .expect("bad verifying key");
 
                     let vk_public = public_share.verifying_key().clone();
                     let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
                     let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
                     // let mut vk_hex = data_encoding::BASE32_NOPAD.encode(&verifying_vec);
-
-                    ks_hex.make_ascii_lowercase();
-                    ps_hex.make_ascii_lowercase();
-                    // vk_hex.make_ascii_lowercase();
 
                     self.config.set_packages(ks_hex, ps_hex, vk_public);
                     info!("See file {:?}", Config::FILE_NAME);
@@ -350,7 +342,7 @@ impl DistributedKeyGeneration {
                     }
                     let sec_id = self.config.secondary().public();
                     let sec = self.local_rpc.fetch_secondary(Some(sec_id)).await?;
-                    debug!("secondary keys {:?}",sec);
+                    debug!("secondary keys {:?}", sec);
                     self.config.save_secondary(sec);
 
                     self.state = ProcessSteps::Finish;
