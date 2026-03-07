@@ -37,7 +37,7 @@ pub struct QuorumWatcher {
     outgoing: Sender<GossipMessage>,
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
-    transactions: BTreeMap<i64, Sender<(PublicKey,TransMessage)>>,
+    transactions: BTreeMap<i64, Sender<(PublicKey, TransMessage)>>,
     tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64, AnyError>>>,
     key_package: Option<KeyPackage>,
 }
@@ -60,7 +60,7 @@ impl QuorumWatcher {
         Self {
             my_id,
             config,
-            state: QuorumSteps::Preparty,
+            state: QuorumSteps::Init,
             incoming,
             outgoing,
             peers: peer_set,
@@ -89,20 +89,32 @@ impl QuorumWatcher {
         match &self.state {
             QuorumSteps::Init => {
                 warn!("Init Mode");
-                let _ = self.outgoing.send(GossipMessage::Init).await;
+                // let _ = self.outgoing.send(GossipMessage::Init).await;
+                // invite myself to the party.
+                self.online_peers.insert(self.my_id);
+                self.peers.insert(self.my_id);
                 self.state = QuorumSteps::Preparty;
             }
             QuorumSteps::Preparty => {
                 warn!("PreParty");
                 // Collect the IDs,
                 println!("{:?}", &event);
-                if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {
-                    info!("adding peer {:?}", &event.id);
-                    self.online_peers.insert(event.id);
-                }
-                warn!("peers {:#?}", self.online_peers.len());
-                if self.online_peers.len() == (self.config.min() - 1) {
-                    self.state = QuorumSteps::Quorum;
+                // Only grab hello messages
+                match event.message {
+                    GossipMessage::Hello { .. } => {
+                        // if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {
+                        if self.peers.contains(&event.id) {
+                            info!("adding peer {:?}", &event.id);
+                            self.online_peers.insert(event.id);
+                        };
+                        warn!("peers {:#?}", self.online_peers.len());
+                        if self.online_peers.len() == (self.config.min()) {
+                            info!("Quorum ");
+                            info!("Peers {:?}", self.online_peers);
+                            self.state = QuorumSteps::Quorum;
+                        };
+                    }
+                    _ => {}
                 }
             }
 
@@ -129,20 +141,19 @@ impl QuorumWatcher {
                                 // this starts an actor on each endpoint
                                 // through redirection
                                 if !self.transactions.contains_key(&transaction_id) {
-                                    warn!("create the task");
-
+                                    warn!("Create the task {}",transaction_id);
+                                    // error!("{:?}",&self.online_peers);
                                     let (tx, s) = SignerTask::new(
                                         self.my_id,
                                         transaction_id,
                                         sig_message.clone(),
                                         self.outgoing.clone(),
                                         self.key_package.clone(),
+                                        self.online_peers.clone(),
                                     )
                                     .await;
                                     // push the start into the new signer
-                                    let _ = tx
-                                        .send((id,message))
-                                        .await;
+                                    let _ = tx.send((id, message)).await;
                                     self.tasks.push(Box::pin(s.run()));
                                     self.transactions.insert(transaction_id, tx);
                                 } else {
@@ -150,13 +161,12 @@ impl QuorumWatcher {
                                 }
                             }
                             // Route everything but the start into the actor
-                            _ => { 
-                                self.route(id,message).await?;
-                            }
-                            // SigEvent::Round1 => todo!(),
-                            // SigEvent::Round2 => todo!(),
-                            // SigEvent::Collect => todo!(),
-                            // SigEvent::Compare => todo!(),
+                            _ => {
+                                self.route(id, message).await?;
+                            } // SigEvent::Round1 => todo!(),
+                              // SigEvent::Round2 => todo!(),
+                              // SigEvent::Collect => todo!(),
+                              // SigEvent::Compare => todo!(),
                         }
                     }
                     _ => {}
@@ -167,9 +177,9 @@ impl QuorumWatcher {
     }
 
     // take a message and route it to a running transaction.
-    pub async fn route(&mut self,id: PublicKey, event: TransMessage) -> Result<(), AnyError> {
+    pub async fn route(&mut self, id: PublicKey, event: TransMessage) -> Result<(), AnyError> {
         if let Some(tx) = self.transactions.get(&event.transaction_id) {
-            tx.send((id,event)).await.expect("bad routing");
+            tx.send((id, event)).await.expect("bad routing");
         }
         Ok(())
     }

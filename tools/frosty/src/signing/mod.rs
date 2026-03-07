@@ -1,6 +1,7 @@
 // Signing can be done with a gossip channel
 
 use bytes::Bytes;
+use frost_ed25519::{SigningPackage, round1::SigningCommitments};
 use std::time::Duration;
 
 use tokio::{sync::mpsc::Receiver, sync::mpsc::Sender};
@@ -32,8 +33,8 @@ pub const BEACON_DURATION: u64 = 10u64;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SigEvent {
     Start { sig_message: Bytes },
-    Round1,
-    Round2,
+    Round1 { commitment: SigningCommitments },
+    Round2 { package: SigningPackage },
     Collect,
     Compare,
 }
@@ -170,7 +171,7 @@ pub async fn runner(
                                 }
                             };
                             // TODO harden, check for good nodes.
-                            outgoing.send(SigEvents{id : public_key,message : mess_checked.clone()}).await.expect("send to sig failed");
+                            let _ = outgoing.send(SigEvents{id : public_key,message : mess_checked.clone()}).await;//.expect("send to sig failed");
                             debug!("message {} => {:?}",public_key.fmt_short(),mess_checked);
                         }
                         Event::Lagged => println!("Lagged!!"),
@@ -220,7 +221,10 @@ pub async fn message_boop(
             },
         };
         // Send local
-        let sig_m = SigEvents { id, message: gm.clone() };
+        let sig_m = SigEvents {
+            id,
+            message: gm.clone(),
+        };
         let _ = tx.send(sig_m).await;
 
         // Send to gossip
