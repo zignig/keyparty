@@ -39,4 +39,3 @@
 1. Split into keyparty and signer.
 1. change the wait times to minimise the sequence time.
 1. check and save max and min shares
-

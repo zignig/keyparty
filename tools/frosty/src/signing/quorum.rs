@@ -6,7 +6,6 @@ use frost_ed25519::keys::KeyPackage;
 use iroh::PublicKey;
 use n0_error::AnyError;
 use n0_error::Result;
-use n0_error::anyerr;
 use n0_future::FuturesUnordered;
 use n0_future::StreamExt;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -14,7 +13,6 @@ use tracing::error;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
-use crate::signing;
 use crate::signing::SigEvent;
 use crate::signing::TransMessage;
 use crate::signing::now;
@@ -39,7 +37,7 @@ pub struct QuorumWatcher {
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
     transactions: BTreeMap<i64, Sender<(PublicKey, TransMessage)>>,
-    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64, AnyError>>>,
+    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64,(i64, AnyError)>>>,
     key_package: Option<KeyPackage>,
 }
 
@@ -67,7 +65,7 @@ impl QuorumWatcher {
             peers: peer_set,
             online_peers: Default::default(),
             transactions: Default::default(),
-            tasks: FuturesUnordered::<n0_future::boxed::BoxFuture<Result<i64, AnyError>>>::new(),
+            tasks: FuturesUnordered::<n0_future::boxed::BoxFuture<Result<i64,(i64,AnyError)>>>::new(),
             key_package: None,
         }
     }
@@ -90,7 +88,8 @@ impl QuorumWatcher {
         if event.message == GossipMessage::PeerUp {
             // new peer , say hello
             // this helps with getting quorum
-            let _ = self.outgoing
+            let _ = self
+                .outgoing
                 .send(GossipMessage::Hello { timestamp: now() })
                 .await;
         }
@@ -106,8 +105,6 @@ impl QuorumWatcher {
             }
             QuorumSteps::Preparty => {
                 warn!("PreParty");
-                // Collect the IDs,
-                println!("{:?}", &event);
                 // Only grab hello messages
                 match event.message {
                     GossipMessage::Hello { .. } => {
@@ -118,7 +115,7 @@ impl QuorumWatcher {
                         };
                         warn!("peers {:#?}", self.online_peers.len());
                         if self.online_peers.len() == (self.config.min()) {
-                            info!("Quorum ");
+                            info!("Made Quorum");
                             info!("Peers {:?}", self.online_peers);
                             self.state = QuorumSteps::Quorum;
                         };
@@ -171,7 +168,7 @@ impl QuorumWatcher {
                             // Route everything but the start into the actor
                             _ => {
                                 self.route(id, message).await?;
-                            } 
+                            }
                         }
                     }
                     _ => {}
@@ -185,8 +182,8 @@ impl QuorumWatcher {
     pub async fn route(&mut self, id: PublicKey, event: TransMessage) -> Result<(), AnyError> {
         if let Some(tx) = self.transactions.get(&event.transaction_id) {
             tx.send((id, event)).await.expect("bad routing");
-        } else { 
-            error!("Missign transaction {}",&event.transaction_id);
+        } else {
+            error!("Missign transaction {}", &event.transaction_id);
             // return Err(anyerr!("missing transaction"));
         }
         Ok(())
@@ -201,14 +198,24 @@ impl QuorumWatcher {
             .await;
         loop {
             tokio::select! {
+                // messages from the gossip network
                 Some(item) = self.incoming.recv() => {
                     self.handle_event(item).await?
                 }
+                // Signing transactions
                 val = self.tasks.next(), if !self.tasks.is_empty() => {
                     info!("task finish {:#?}",&val);
                     if let Some(val) = val {
-                        let val = val?;
-                        self.transactions.remove(&val);
+                        match &val {
+                            Ok(id) => { 
+                                info!("transaction {} finished",&id);
+                                self.transactions.remove(id);
+                            },
+                            Err(e) => {
+                                error!("transaction error {:?}",e);
+                                self.transactions.remove(&e.0);
+                            },
+                        }
                     }
                 }
             }

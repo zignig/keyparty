@@ -25,7 +25,7 @@ mod auth;
 mod quorum;
 mod signer;
 
-pub const BEACON_DURATION: u64 = 10u64;
+pub const BEACON_DURATION: u64 = 1u64;
 
 // Message Structs
 // https://frost.zfnd.org/tutorial/signing.html for info.
@@ -64,6 +64,8 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         .relay_mode(RelayMode::Disabled)
         .bind()
         .await?;
+
+    // let _ = endpoint.online().await;
 
     // temp until the internet is fixed
     let mdns = MdnsDiscovery::builder().build(endpoint.id()).unwrap();
@@ -148,7 +150,7 @@ pub async fn runner(
     // Select on the events
     loop {
         tokio::select! {
-            biased;
+            //biased;
             // Events from the gossip network.
             event = rx.try_next() => {
                 let event = event?;
@@ -230,7 +232,7 @@ pub async fn message_boop(
         // Send to gossip
         let g_mess = SignedMessage::sign_and_encode(&secret_key, &gm)?;
         let _ = gtx.broadcast(g_mess).await;
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 

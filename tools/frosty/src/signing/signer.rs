@@ -8,7 +8,7 @@ use frost::{
 };
 use frost_ed25519 as frost;
 use iroh::PublicKey;
-use n0_error::{AnyError, Result};
+use n0_error::{AnyError, Result, anyerr};
 use std::{
     collections::{BTreeMap, BTreeSet},
     time::Duration,
@@ -116,7 +116,7 @@ impl SignerTask {
         // TODO fix this to track both state and message switch.
         // self.send_out(SigEvent::Compare).await?;
         match &mess.event {
-            SigEvent::Start { sig_message } => match &self.key_package {
+            SigEvent::Start { .. } => match &self.key_package {
                 Some(key_package) => {
                     let (nonce, commitment) =
                         frost::round1::commit(key_package.signing_share(), &mut rng);
@@ -164,15 +164,17 @@ impl SignerTask {
                     // Remap to identifiers and create the signing pacakage
                     let mut id_commitments: BTreeMap<Identifier, SigningCommitments> =
                         Default::default();
+                    
                     for (key, com) in self.commitments.iter() {
-                        let id = self.identifier_map.get(key).ok_or("bad ident")?;
+                        let id = self.identifier_map.get(key).ok_or("ident missing")?;
                         id_commitments.insert(*id, *com);
                     }
                     // Create the signing pacakge
                     let mess_bytes: &[u8] = self.message.as_ref();
                     let signing_package = frost::SigningPackage::new(id_commitments, mess_bytes);
                     self.state = SState::Round2;
-                    self.signing_package.insert(self.my_id,signing_package.clone());
+                    self.signing_package
+                        .insert(self.my_id, signing_package.clone());
                     self.send_out(SigEvent::Round2 {
                         package: signing_package,
                     })
@@ -190,7 +192,7 @@ impl SignerTask {
                     self.state = SState::Finished;
                 }
             }
-            SState::Finished => {},
+            SState::Finished => {}
             SState::Fail => {
                 error!("FAIL!!! on keypakage")
             }
@@ -198,19 +200,21 @@ impl SignerTask {
         Ok(())
     }
 
-    pub async fn run(mut self) -> Result<i64, AnyError> {
+    pub async fn run(mut self) -> Result<i64,(i64, AnyError)> {
         warn!(" Starting Signer Task {:#?}", &self.state);
         let timeout = tokio::time::sleep(SignerTask::TIME_OUT);
         tokio::pin!(timeout);
         loop {
             tokio::select! {
                 Some(event)  = self.incoming.recv() => {
-                    // error!("signing interior {:#?}",&event);
-                    self.handle_event(event).await?;
+                    match self.handle_event(event).await {
+                        Ok(_) => {},
+                        Err(e) => error!("transaction error {} : {}",self.transaction_id,e),
+                    };
                 },
                 _ = &mut timeout => {
-                    warn!("timeout finished");
-                    return Ok(self.transaction_id);
+                    error!("timeout for {}",self.transaction_id);
+                    return Err((self.transaction_id,anyerr!("timeout")));
                 },
 
             }

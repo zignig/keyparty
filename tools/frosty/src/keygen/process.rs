@@ -309,8 +309,8 @@ impl DistributedKeyGeneration {
                         public_share.serialize().expect("bad public serialization");
 
                     let vk_public = public_share.verifying_key().clone();
-                    let mut ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
-                    let mut ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
+                    let ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
+                    let ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
                     // let mut vk_hex = data_encoding::BASE32_NOPAD.encode(&verifying_vec);
 
                     self.config.set_packages(ks_hex, ps_hex, vk_public);
