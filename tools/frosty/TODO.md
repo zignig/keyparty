@@ -7,7 +7,7 @@
 1. make the config file based on token name.
 1. integrate rcan construction
     1. use as a rcan anchor , and sign subkeys
-    2. distribute rcan chains
+    1. distribute rcan chains
 
 ## Signing
 
@@ -18,6 +18,13 @@
 - each node is a coordinator
 - deal with large messages (4Kb on gossip messages) , ?integrate blob distribution.
 - check that there is quorum (min shares) before proceeding
+
+## quorum 
+
+Maintaining quorm is harder than it looks.
+
+1. need to use hello messages to watch for node changes.
+1. add quorum messages , gained / lost through the gossip channel.
 
 ### Layout
 

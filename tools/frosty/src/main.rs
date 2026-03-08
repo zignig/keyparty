@@ -40,7 +40,11 @@ async fn main() -> Result<()> {
     // Mode switch keygen / signing party
     let config = Config::load()?;
     let res = match args.command {
-        Command::Generate { .. } | Command::Join { .. } => keygen::run(config, args).await,
+        Command::Generate { .. } | Command::Join { .. } => {
+            keygen::run(config, args).await
+            // TODO , run up the signer in base mode.
+            // use preparty to generate RBAC keys
+        }
         Command::Sign { ref message } => signing::run(config, args.clone(), message.clone()).await,
     };
     info!("{:#?}", res);

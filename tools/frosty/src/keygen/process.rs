@@ -164,7 +164,6 @@ impl DistributedKeyGeneration {
                     self.round1_secret = Some(round1_secret_package);
 
                     // The round 1 package gets sent to everyone
-                    // TODO , can this loop across all client be put into a function ?
                     for (peer, client) in self.clients.iter() {
                         let _ = client.round1(round1_package.clone()).await?;
                         debug!("send round1 package to {:?}", peer);
@@ -268,8 +267,6 @@ impl DistributedKeyGeneration {
                 }
                 ProcessSteps::Part2Fetch => {
                     info!("Part 2 Fetch");
-                    // Does this need a counter check , probably yes
-                    // TODO fix this
                     let mut exit = false;
                     while !exit {
                         // check that there are max - 1 round 2 packages

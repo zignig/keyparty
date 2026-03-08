@@ -172,7 +172,6 @@ pub async fn runner(
                                     continue;
                                 }
                             };
-                            // TODO harden, check for good nodes.
                             outgoing.send(SigEvents{id : public_key,message : mess_checked.clone()}).await.expect("send to sig failed");
                             debug!("message {} => {:?}",public_key.fmt_short(),mess_checked);
                         }
@@ -204,7 +203,7 @@ pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     }
 }
 
-// TODO  , inject some messages for testing.
+// TODO , some testing to inject signing messages
 pub async fn message_boop(
     id: PublicKey,
     tx: Sender<SigEvents>,
