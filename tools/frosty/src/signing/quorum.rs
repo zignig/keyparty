@@ -6,6 +6,7 @@ use frost_ed25519::keys::KeyPackage;
 use iroh::PublicKey;
 use n0_error::AnyError;
 use n0_error::Result;
+use n0_error::anyerr;
 use n0_future::FuturesUnordered;
 use n0_future::StreamExt;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -86,6 +87,14 @@ impl QuorumWatcher {
             }
         }
 
+        if event.message == GossipMessage::PeerUp {
+            // new peer , say hello
+            // this helps with getting quorum
+            let _ = self.outgoing
+                .send(GossipMessage::Hello { timestamp: now() })
+                .await;
+        }
+
         match &self.state {
             QuorumSteps::Init => {
                 warn!("Init Mode");
@@ -129,7 +138,6 @@ impl QuorumWatcher {
                 debug!("transactions : {:?}", self.transactions.keys());
                 debug!("event: {:#?}", &event.message);
                 match event.message {
-                    GossipMessage::Init => todo!(),
                     GossipMessage::Hello { timestamp } => {
                         debug!("hello {}", timestamp)
                     }
@@ -141,7 +149,7 @@ impl QuorumWatcher {
                                 // this starts an actor on each endpoint
                                 // through redirection
                                 if !self.transactions.contains_key(&transaction_id) {
-                                    warn!("Create the task {}",transaction_id);
+                                    warn!("Create the task {}", transaction_id);
                                     // error!("{:?}",&self.online_peers);
                                     let (tx, s) = SignerTask::new(
                                         self.my_id,
@@ -163,10 +171,7 @@ impl QuorumWatcher {
                             // Route everything but the start into the actor
                             _ => {
                                 self.route(id, message).await?;
-                            } // SigEvent::Round1 => todo!(),
-                              // SigEvent::Round2 => todo!(),
-                              // SigEvent::Collect => todo!(),
-                              // SigEvent::Compare => todo!(),
+                            } 
                         }
                     }
                     _ => {}
@@ -180,10 +185,14 @@ impl QuorumWatcher {
     pub async fn route(&mut self, id: PublicKey, event: TransMessage) -> Result<(), AnyError> {
         if let Some(tx) = self.transactions.get(&event.transaction_id) {
             tx.send((id, event)).await.expect("bad routing");
+        } else { 
+            error!("Missign transaction {}",&event.transaction_id);
+            // return Err(anyerr!("missing transaction"));
         }
         Ok(())
     }
 
+    // runner for the quorum
     pub async fn run(mut self) -> Result<()> {
         // Say hello to everyone.
         let _ = self

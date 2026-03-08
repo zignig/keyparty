@@ -22,7 +22,7 @@ use tracing::{debug, error, info, warn};
 use crate::{cli::Args, config::Config};
 
 mod auth;
-mod protocol;
+mod quorum;
 mod signer;
 
 pub const BEACON_DURATION: u64 = 10u64;
@@ -100,7 +100,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     // Create the signer
     let peers = config.clone().peers();
     let signer =
-        protocol::QuorumWatcher::new(my_id.clone(), config.clone(), from_signer, to_signer, peers);
+        quorum::QuorumWatcher::new(my_id.clone(), config.clone(), from_signer, to_signer, peers);
 
     // Start the signer.
     tokio::spawn(signer.run());
@@ -171,7 +171,7 @@ pub async fn runner(
                                 }
                             };
                             // TODO harden, check for good nodes.
-                            let _ = outgoing.send(SigEvents{id : public_key,message : mess_checked.clone()}).await;//.expect("send to sig failed");
+                            outgoing.send(SigEvents{id : public_key,message : mess_checked.clone()}).await.expect("send to sig failed");
                             debug!("message {} => {:?}",public_key.fmt_short(),mess_checked);
                         }
                         Event::Lagged => println!("Lagged!!"),
