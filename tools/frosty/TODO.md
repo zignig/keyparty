@@ -16,6 +16,7 @@ Things to change,
 
 # Some todo stuff 
 
+1. break into another repo ( git filter-repo --path=tools/frosty/ )
 1. harden endpoints and process to make it hard to cheat.
 1. change name to keyparty.
 1. move the key generation data into it's own struct.
