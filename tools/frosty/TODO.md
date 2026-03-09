@@ -1,3 +1,19 @@
+# Broken. 
+
+Some weirdness, the commitment id's get saved in the key matter!!! 
+
+So .... 
+
+Things to change, 
+
+1. remove saving the primary key from the config
+1. change the secondary key on the irpc to just set and get rather than a vec
+1. at the start of the process, get the secondary public keys
+1. map the identifiers on the _secondary_ keys to the primary keys.
+1. use this map for the key generation.
+1. then the signing gossip can just use the secondary keys straight up
+
+
 # Some todo stuff 
 
 1. harden endpoints and process to make it hard to cheat.

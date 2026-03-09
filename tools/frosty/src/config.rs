@@ -1,4 +1,7 @@
-use frost_ed25519::{VerifyingKey, keys::{KeyPackage, PublicKeyPackage}};
+use frost_ed25519::{
+    Identifier, VerifyingKey,
+    keys::{KeyPackage, PublicKeyPackage},
+};
 use iroh::{PublicKey, SecretKey};
 use n0_error::{AnyError, Result, anyerr};
 use serde::{Deserialize, Serialize};
@@ -68,7 +71,9 @@ impl Config {
     pub fn get_key_pacakge(&self) -> Result<KeyPackage, AnyError> {
         match &self.key_package {
             Some(pack) => {
-                let r= data_encoding::BASE32_NOPAD.decode(pack.as_bytes()).expect("bad package");
+                let r = data_encoding::BASE32_NOPAD
+                    .decode(pack.as_bytes())
+                    .expect("bad package");
                 let v: &[u8] = &r;
                 let val = KeyPackage::deserialize(v).expect("borked");
                 Ok(val)
@@ -80,7 +85,9 @@ impl Config {
     pub fn get_public_package(&self) -> Result<PublicKeyPackage, AnyError> {
         match &self.public_package {
             Some(pack) => {
-                let r= data_encoding::BASE32_NOPAD.decode(pack.as_bytes()).expect("bad package");
+                let r = data_encoding::BASE32_NOPAD
+                    .decode(pack.as_bytes())
+                    .expect("bad package");
                 let v: &[u8] = &r;
                 let val = PublicKeyPackage::deserialize(v).expect("borked");
                 Ok(val)
@@ -88,7 +95,7 @@ impl Config {
             None => Err(anyerr!("public package broken")),
         }
     }
-    
+
     pub fn peers(self) -> Vec<PublicKey> {
         match self.peers {
             Some(peers) => peers,
@@ -96,6 +103,7 @@ impl Config {
         }
     }
 
+    #[allow(dead_code)]
     pub fn secondaries(self) -> Vec<PublicKey> {
         match self.secondary_peers {
             Some(peers) => peers,
@@ -128,6 +136,10 @@ impl Config {
 
     pub fn secondary(&self) -> SecretKey {
         self.secondary_key.clone()
+    }
+
+    pub fn identifier(&self) -> Identifier {
+        Identifier::derive(self.secondary_key.public().as_bytes()).unwrap()
     }
 
     pub fn save_secondary(&mut self, secondaries: Vec<PublicKey>) {

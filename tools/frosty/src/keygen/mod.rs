@@ -51,8 +51,11 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
         Command::Sign { .. } => return Ok(()),
     };
 
+    // share the identifier of the secondary key
+    let ident = config.identifier();
+    
     // make the frosty server
-    let frosty_rpc = FrostyServer::new(token.clone(), max as usize, endpoint.id());
+    let frosty_rpc = FrostyServer::new(token.clone(), max as usize, endpoint.id(),ident);
 
     // create a local client
     let local_rpc = frosty_rpc.clone().local();

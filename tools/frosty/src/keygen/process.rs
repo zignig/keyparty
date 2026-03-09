@@ -7,7 +7,7 @@
 use iroh::{Endpoint, PublicKey};
 use n0_error::{AnyError, Result, anyerr};
 use std::{collections::BTreeMap, time::Duration};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use super::frostyrpc::{FrostyClient, ProcessSteps};
 
@@ -28,6 +28,8 @@ pub struct DistributedKeyGeneration {
     state: ProcessSteps,
     my_id: PublicKey,
 
+    // identifier map based on secondary key public id
+    ident_map: BTreeMap<PublicKey, Identifier>,
     // round 1 info
     round1: BTreeMap<PublicKey, BTreeMap<PublicKey, R1package>>,
     round1_secret: Option<frost_ed25519::keys::dkg::round1::SecretPackage>,
@@ -54,6 +56,9 @@ impl DistributedKeyGeneration {
         ticket: FrostyTicket,
         config: Config,
     ) -> Self {
+        // This took me ages to find, moved across to secondary key for signing.
+        // and was still loading the  primary keys , the the identifiers were wrong.
+
         let my_id = endpoint.id();
         Self {
             config: config,
@@ -65,6 +70,7 @@ impl DistributedKeyGeneration {
             state: ProcessSteps::Init,
             my_id: my_id,
 
+            ident_map: Default::default(),
             round1: Default::default(),
             round1_secret: None,
             part1_map: Default::default(),
@@ -75,7 +81,7 @@ impl DistributedKeyGeneration {
     }
 
     pub async fn run(mut self) -> Result<(), AnyError> {
-        info!("Starting the key generation for {:?}", self.my_id);
+        warn!("Starting the key generation for {:?}", self.my_id);
         let mut rng = frost_ed25519::rand_core::OsRng;
         // Process client is an option so it can be dropped
         let process_client = self.process_client.clone().ok_or("No process client")?;
@@ -146,6 +152,44 @@ impl DistributedKeyGeneration {
                     // process client is no longer needed , set to none
                     // this will drop the irpc connection
                     self.process_client = None;
+                    self.state = ProcessSteps::Secondaries;
+                    continue;
+                }
+                // the identifiers in the key matter match the secondary key id's
+                // this was a pita to track down, weird fails on signing side.
+                // wrong idents in the key matter.
+                ProcessSteps::Secondaries => {
+                    let pub_key = self.config.secondary().public();
+                    for (peer, client) in self.clients.iter() {
+                        let _ = client.send_secondary(pub_key).await;
+                        debug!("send secondary key to  {:?}", peer);
+                    }
+                    let mut exit = false;
+                    let mut counter = 0;
+                    const MAX_TRIES: i32 = 5;
+                    //  TODO , fix this to be client scanner.
+                    while !exit {
+                        let sec = self.local_rpc.fetch_secondary(None).await?;
+                        if sec.len() == self.ticket.max_shares as usize {
+                            exit = true
+                        }
+                        counter += 1;
+                        if counter == MAX_TRIES {
+                            return Err(anyerr!("fail secondary key"));
+                        }
+                        wait(100).await;
+                    }
+                    let sec_id = self.config.secondary().public();
+                    let sec = self.local_rpc.fetch_secondary(Some(sec_id)).await?;
+                    debug!("secondary keys {:?}", sec);
+                    self.config.save_secondary(sec);
+                    // Get and map all the idents
+                    for (peer, client) in self.clients.iter() {
+                        let ident = client.ident().await.unwrap();
+                        debug!("remote ident  {:?}", peer);
+                        self.ident_map.insert(*peer, ident);
+                    }
+                    info!("{:#?}",&self.ident_map);
                     self.state = ProcessSteps::Part1Send;
                     continue;
                 }
@@ -176,6 +220,7 @@ impl DistributedKeyGeneration {
                     info!("Check pack count");
                     let mut exit = false;
                     let mut round1_count: BTreeMap<PublicKey, usize> = Default::default();
+                    // wait till all the packages are there.
                     while !exit {
                         for (peer, client) in self.clients.iter() {
                             let count = client.round1_count().await?;
@@ -207,6 +252,7 @@ impl DistributedKeyGeneration {
                     self.state = ProcessSteps::Part2Build;
                     continue;
                 }
+                // TODO convert to new identifiers
                 ProcessSteps::Part2Build => {
                     info!("Part 2 build");
                     // Build the correct map type
@@ -252,6 +298,7 @@ impl DistributedKeyGeneration {
                     self.state = ProcessSteps::Part2Send;
                     continue;
                 }
+
                 ProcessSteps::Part2Send => {
                     info!("Part 2 Send");
                     for (id, pack) in self.round2_map_out.iter() {
@@ -265,6 +312,7 @@ impl DistributedKeyGeneration {
                     self.state = ProcessSteps::Part2Fetch;
                     continue;
                 }
+                // TODO convert to new identifiers
                 ProcessSteps::Part2Fetch => {
                     info!("Part 2 Fetch");
                     let mut exit = false;
@@ -287,6 +335,7 @@ impl DistributedKeyGeneration {
                     self.state = ProcessSteps::Part3Build;
                     continue;
                 }
+
                 ProcessSteps::Part3Build => {
                     info!("Part 3 build");
                     let secret_package = self
@@ -308,40 +357,11 @@ impl DistributedKeyGeneration {
                     let vk_public = public_share.verifying_key().clone();
                     let ks_hex = data_encoding::BASE32_NOPAD.encode(&key_share_vec);
                     let ps_hex = data_encoding::BASE32_NOPAD.encode(&public_share_vec);
-                    // let mut vk_hex = data_encoding::BASE32_NOPAD.encode(&verifying_vec);
 
                     self.config.set_packages(ks_hex, ps_hex, vk_public);
                     info!("See file {:?}", Config::FILE_NAME);
                     self.config
                         .set_max_min(self.ticket.max_shares, self.ticket.min_shares);
-                    self.state = ProcessSteps::Secondaries;
-                    continue;
-                }
-                ProcessSteps::Secondaries => {
-                    let pub_key = self.config.secondary().public();
-                    for (peer, client) in self.clients.iter() {
-                        let _ = client.send_secondary(pub_key).await;
-                        debug!("send secondary key to  {:?}", peer);
-                    }
-                    let mut exit = false;
-                    let mut counter = 0;
-                    const MAX_TRIES: i32 = 5;
-                    while !exit {
-                        let sec = self.local_rpc.fetch_secondary(None).await?;
-                        if sec.len() == self.ticket.max_shares as usize {
-                            exit = true
-                        }
-                        counter += 1;
-                        if counter == MAX_TRIES {
-                            return Err(anyerr!("fail secondary key"));
-                        }
-                        wait(100).await;
-                    }
-                    let sec_id = self.config.secondary().public();
-                    let sec = self.local_rpc.fetch_secondary(Some(sec_id)).await?;
-                    debug!("secondary keys {:?}", sec);
-                    self.config.save_secondary(sec);
-
                     self.state = ProcessSteps::Finish;
                     continue;
                 }

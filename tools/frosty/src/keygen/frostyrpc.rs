@@ -18,8 +18,8 @@ mod frosted {
     use anyhow::Result;
 
     // Key Package imports
-    use frost_ed25519::keys::dkg::round1::Package as R1package;
     use frost_ed25519::keys::dkg::round2::Package as R2Package;
+    use frost_ed25519::{Identifier, keys::dkg::round1::Package as R1package};
 
     use iroh::{
         Endpoint, EndpointId, PublicKey,
@@ -40,6 +40,7 @@ mod frosted {
     pub enum ProcessSteps {
         Init,
         CreateMesh,
+        Secondaries,
         Part1Send,
         Part1Fetch,
         Part1Check,
@@ -47,7 +48,6 @@ mod frosted {
         Part2Send,
         Part2Fetch,
         Part3Build,
-        Secondaries,
         Finish,
     }
 
@@ -100,6 +100,9 @@ mod frosted {
 
     #[derive(Debug, Serialize, Deserialize)]
     struct SecondaryList;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Ident;
 
     // Use the macro to generate both the messages and the protocol
     // plus implement Channels for each type
@@ -154,6 +157,10 @@ mod frosted {
         #[rpc(tx=mpsc::Sender<PublicKey>)]
         SecondaryList(SecondaryList),
 
+        // Get the ident of this node
+        #[rpc(tx=oneshot::Sender<Identifier>)]
+        Ident(Ident),
+
         // Finish The Transaction
         #[rpc(tx=oneshot::Sender<()>)]
         Finish(Finish),
@@ -170,6 +177,7 @@ mod frosted {
         counter: Arc<AtomicUsize>,
         auth_token: String,
         my_id: PublicKey,
+        identifier: Identifier,
         // Crypto bits
         r1packages: Arc<Mutex<BTreeMap<EndpointId, R1package>>>,
         r2packages: Arc<Mutex<BTreeMap<EndpointId, R2Package>>>,
@@ -223,7 +231,12 @@ mod frosted {
 
     impl FrostyServer {
         // Make a new frosty server
-        pub fn new(auth_token: String, max_peers: usize, my_id: PublicKey) -> Self {
+        pub fn new(
+            auth_token: String,
+            max_peers: usize,
+            my_id: PublicKey,
+            identifier: Identifier,
+        ) -> Self {
             let s = Self {
                 max_peers: max_peers,
                 peers: Default::default(),
@@ -231,7 +244,8 @@ mod frosted {
                 peer_count: Arc::new(AtomicUsize::new(0)),
                 counter: Arc::new(AtomicUsize::new(0)),
                 auth_token,
-                my_id: my_id,
+                my_id,
+                identifier,
                 r1packages: Default::default(),
                 r2packages: Default::default(),
             };
@@ -323,6 +337,7 @@ mod frosted {
                         }
                     }
                 }
+
                 FrostyMessage::Part2Send(pack) => {
                     let WithChannels { inner, tx, .. } = pack;
                     debug!("part 2 package arrives {:?}", inner.pack);
@@ -388,6 +403,10 @@ mod frosted {
                     }
                 }
 
+                FrostyMessage::Ident(tx) => {
+                    let WithChannels { tx, .. } = tx;
+                    tx.send(self.identifier).await.expect("bad ident");
+                }
                 FrostyMessage::Finish(fin) => {
                     warn!("Finishing Transaction");
                     let WithChannels { tx, .. } = fin;
@@ -497,6 +516,10 @@ mod frosted {
                 }
             }
             Ok(keys)
+        }
+
+        pub async fn ident(&self) -> Result<Identifier, irpc::Error> {
+            self.inner.rpc(Ident {}).await
         }
 
         pub async fn finish(&self) -> Result<(), irpc::Error> {

@@ -59,7 +59,7 @@ pub enum GossipMessage {
 pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
     info!("-- Start the signing party --");
 
-    let secret = config.secondary().clone();
+    let secret = config.secret().clone();
     let endpoint = Endpoint::builder()
         .secret_key(secret.clone())
         .relay_mode(RelayMode::Disabled)
@@ -85,13 +85,13 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     // TODO fix this topic
     let topic_id = TopicId::from_bytes([5; 32]);
 
-    let peers = config.clone().secondaries();
+    let peers = config.clone().peers();
 
     for peer in peers.iter() {
         info!("Waiting for peer : {:}", peer.fmt_short());
     }
 
-    let goss = gossip.subscribe_and_join(topic_id, peers).await?;
+    let goss = gossip.subscribe_and_join(topic_id, peers.clone()).await?;
     
     let my_id = secret.public();
 
@@ -102,7 +102,6 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     let (from_signer, to_gossip) = tokio::sync::mpsc::channel::<GossipMessage>(10);
 
     // Create the signer
-    let peers = config.clone().secondaries();
     let signer =
         quorum::QuorumWatcher::new(my_id.clone(), config.clone(), from_signer, to_signer, peers);
 

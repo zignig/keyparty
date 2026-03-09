@@ -39,6 +39,8 @@ pub struct SignerTask {
     outgoing: Sender<GossipMessage>,
     nodes: BTreeSet<PublicKey>,
 
+    id_map: BTreeMap<PublicKey, Identifier>,
+
     // Signing Bits
     key_package: Option<KeyPackage>,
     public_package: Option<PublicKeyPackage>,
@@ -51,7 +53,7 @@ pub struct SignerTask {
 }
 
 impl SignerTask {
-    const TIME_OUT: Duration = Duration::from_millis(500);
+    const TIME_OUT: Duration = Duration::from_secs(1);
 
     // Make a new one
     pub async fn new(
@@ -65,7 +67,14 @@ impl SignerTask {
     ) -> (Sender<(PublicKey, TransMessage)>, Self) {
         let (tx, rx) = tokio::sync::mpsc::channel::<(PublicKey, TransMessage)>(5);
 
-        error!("nodes = {:#?}", &nodes);
+        // error!("nodes = {:#?}", &nodes);
+
+        let mut id_map: BTreeMap<PublicKey, Identifier> = BTreeMap::new();
+        for node in nodes.iter() {
+            id_map.insert(*node, Identifier::derive(node.as_bytes()).expect("bork"));
+        }
+
+        // error!("{:?}", &id_map);
 
         let sel = Self {
             my_id,
@@ -81,6 +90,7 @@ impl SignerTask {
             commitments: Default::default(),
             signing_package: None,
             signing_shares: Default::default(),
+            id_map,
         };
         (tx, sel)
     }
@@ -113,6 +123,7 @@ impl SignerTask {
                             frost::round1::commit(key_package.signing_share(), &mut rng);
                         self.nonce = Some(nonce);
                         self.commitments.insert(self.my_id, commitment);
+                        // error!("signer , {:#?}",&commitment);
                         self.send_out(SigEvent::Round1 { commitment }).await?;
                         self.state = SState::Round1;
                     }
@@ -163,9 +174,9 @@ impl SignerTask {
                         Default::default();
                     // TODO , there are some edge cases on new nodes
                     for (key, com) in self.commitments.iter() {
-                        let id = Identifier::derive(key.as_bytes()).expect("bad identifier");
-                        error!("map  : {:} --> {:?}", key.fmt_short(), id);
-                        id_commitments.insert(id, *com);
+                        let iden = self.id_map.get(key).ok_or("bad id")?;
+                        // error!("map  : {:} --> {:?}", key.fmt_short(), iden);
+                        id_commitments.insert(*iden, *com);
                     }
 
                     // Create the signing package
@@ -176,6 +187,7 @@ impl SignerTask {
                     // Make and distrubute shares
                     let nonce = self.nonce.clone().ok_or("missing nonce")?;
                     let key_package = self.key_package.clone().ok_or("missing keypackage")?;
+                    
                     let signature_share =
                         frost::round2::sign(&signing_package, &nonce, &key_package);
                     match signature_share {
@@ -186,7 +198,7 @@ impl SignerTask {
                             })
                             .await?;
                         }
-                        Err(e) => error!("sig share {:#?}",e),
+                        Err(e) => error!("sig share {:#?}", e),
                     }
                     self.state = SState::Round2;
                 }
@@ -210,12 +222,11 @@ impl SignerTask {
 
                     // remap the signing shares
                     let mut sig_share: BTreeMap<Identifier, SignatureShare> = BTreeMap::new();
-                    info!("sig shares ---- ");
                     for (key, value) in self.signing_shares.iter() {
-                        info!("-- {:}", key.fmt_short());
-                        let ident = Identifier::derive(key.as_bytes()).expect("bad identifier");
-                        sig_share.insert(ident, *value);
+                        let id = self.id_map.get(key).ok_or("bad id")?;
+                        sig_share.insert(*id, *value);
                     }
+
                     // get the public package
                     let public_package = self
                         .public_package
