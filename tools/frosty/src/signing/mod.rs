@@ -1,7 +1,7 @@
 // Signing can be done with a gossip channel
 
 use bytes::Bytes;
-use frost_ed25519::{SigningPackage, round1::SigningCommitments};
+use frost_ed25519::{round1::SigningCommitments, round2::SignatureShare};
 use std::time::Duration;
 
 use tokio::{sync::mpsc::Receiver, sync::mpsc::Sender};
@@ -34,7 +34,7 @@ pub const BEACON_DURATION: u64 = 1u64;
 pub enum SigEvent {
     Start { sig_message: Bytes },
     Round1 { commitment: SigningCommitments },
-    Round2 { package: SigningPackage },
+    Round2 { share: SignatureShare },
     Collect,
     Compare,
 }
@@ -59,8 +59,9 @@ pub enum GossipMessage {
 pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
     info!("-- Start the signing party --");
 
+    let secret = config.secondary().clone();
     let endpoint = Endpoint::builder()
-        .secret_key(config.secondary())
+        .secret_key(secret.clone())
         .relay_mode(RelayMode::Disabled)
         .bind()
         .await?;
@@ -91,8 +92,9 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     }
 
     let goss = gossip.subscribe_and_join(topic_id, peers).await?;
-    let secret = config.secret().clone();
+    
     let my_id = secret.public();
+
     let (tx, rx) = goss.split();
 
     // Messages between actors
@@ -100,7 +102,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     let (from_signer, to_gossip) = tokio::sync::mpsc::channel::<GossipMessage>(10);
 
     // Create the signer
-    let peers = config.clone().peers();
+    let peers = config.clone().secondaries();
     let signer =
         quorum::QuorumWatcher::new(my_id.clone(), config.clone(), from_signer, to_signer, peers);
 

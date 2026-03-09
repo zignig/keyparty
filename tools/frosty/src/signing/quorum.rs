@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use frost_ed25519::keys::KeyPackage;
+use frost_ed25519::keys::PublicKeyPackage;
 // Actor and support for the signing sequence
 // use frost_ed25519 as frost;
 use iroh::PublicKey;
@@ -37,8 +38,9 @@ pub struct QuorumWatcher {
     peers: BTreeSet<PublicKey>,
     online_peers: BTreeSet<PublicKey>,
     transactions: BTreeMap<i64, Sender<(PublicKey, TransMessage)>>,
-    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64,(i64, AnyError)>>>,
+    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64, (i64, AnyError)>>>,
     key_package: Option<KeyPackage>,
+    public_package: Option<PublicKeyPackage>,
 }
 
 impl QuorumWatcher {
@@ -65,20 +67,27 @@ impl QuorumWatcher {
             peers: peer_set,
             online_peers: Default::default(),
             transactions: Default::default(),
-            tasks: FuturesUnordered::<n0_future::boxed::BoxFuture<Result<i64,(i64,AnyError)>>>::new(),
+            tasks:
+                FuturesUnordered::<n0_future::boxed::BoxFuture<Result<i64, (i64, AnyError)>>>::new(),
             key_package: None,
+            public_package: None,
         }
     }
 
     // Need a diagram of the signing flow
     async fn handle_event(&mut self, event: SigEvents) -> Result<()> {
         // Match for state machine
+        if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {
+            info!("adding peer {:?}", &event.id);
+            self.online_peers.insert(event.id);
+        };
         // Check for downed peers
+
         if event.message == GossipMessage::PeerDown {
             warn!("node down !!! : {:}", &event.id.fmt_short());
             self.online_peers.remove(&event.id);
             warn!("{:#?}", &self.online_peers);
-            if self.online_peers.len() <= (self.config.min() - 1) {
+            if self.online_peers.len() <= (self.config.min()) {
                 warn!("quorum lost!");
                 self.state = QuorumSteps::Preparty;
                 return Ok(());
@@ -88,6 +97,7 @@ impl QuorumWatcher {
         if event.message == GossipMessage::PeerUp {
             // new peer , say hello
             // this helps with getting quorum
+            warn!("{:#?}", &self.online_peers);
             let _ = self
                 .outgoing
                 .send(GossipMessage::Hello { timestamp: now() })
@@ -105,23 +115,13 @@ impl QuorumWatcher {
             }
             QuorumSteps::Preparty => {
                 warn!("PreParty");
-                // Only grab hello messages
-                match event.message {
-                    GossipMessage::Hello { .. } => {
-                        // if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {
-                        if self.peers.contains(&event.id) {
-                            info!("adding peer {:?}", &event.id);
-                            self.online_peers.insert(event.id);
-                        };
-                        warn!("peers {:#?}", self.online_peers.len());
-                        if self.online_peers.len() == (self.config.min()) {
-                            info!("Made Quorum");
-                            info!("Peers {:?}", self.online_peers);
-                            self.state = QuorumSteps::Quorum;
-                        };
-                    }
-                    _ => {}
-                }
+                // if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {
+                warn!("peers {:#?}", self.online_peers.len());
+                if self.online_peers.len() >= (self.config.min()) {
+                    info!("Made Quorum");
+                    info!("Peers {:?}", self.online_peers);
+                    self.state = QuorumSteps::Quorum;
+                };
             }
 
             QuorumSteps::Quorum => {
@@ -130,6 +130,11 @@ impl QuorumWatcher {
                 if self.key_package.is_none() {
                     info!("key package loaded");
                     self.key_package = Some(self.config.get_key_pacakge()?);
+                };
+
+                if self.public_package.is_none() {
+                    info!("public  package loaded");
+                    self.public_package = Some(self.config.get_public_package()?);
                 };
 
                 debug!("transactions : {:?}", self.transactions.keys());
@@ -154,6 +159,7 @@ impl QuorumWatcher {
                                         sig_message.clone(),
                                         self.outgoing.clone(),
                                         self.key_package.clone(),
+                                        self.public_package.clone(),
                                         self.online_peers.clone(),
                                     )
                                     .await;
@@ -207,7 +213,7 @@ impl QuorumWatcher {
                     info!("task finish {:#?}",&val);
                     if let Some(val) = val {
                         match &val {
-                            Ok(id) => { 
+                            Ok(id) => {
                                 info!("transaction {} finished",&id);
                                 self.transactions.remove(id);
                             },

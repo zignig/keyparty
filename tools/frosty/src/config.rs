@@ -1,4 +1,4 @@
-use frost_ed25519::{VerifyingKey, keys::KeyPackage};
+use frost_ed25519::{VerifyingKey, keys::{KeyPackage, PublicKeyPackage}};
 use iroh::{PublicKey, SecretKey};
 use n0_error::{AnyError, Result, anyerr};
 use serde::{Deserialize, Serialize};
@@ -77,6 +77,18 @@ impl Config {
         }
     }
 
+    pub fn get_public_package(&self) -> Result<PublicKeyPackage, AnyError> {
+        match &self.public_package {
+            Some(pack) => {
+                let r= data_encoding::BASE32_NOPAD.decode(pack.as_bytes()).expect("bad package");
+                let v: &[u8] = &r;
+                let val = PublicKeyPackage::deserialize(v).expect("borked");
+                Ok(val)
+            }
+            None => Err(anyerr!("public package broken")),
+        }
+    }
+    
     pub fn peers(self) -> Vec<PublicKey> {
         match self.peers {
             Some(peers) => peers,
