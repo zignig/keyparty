@@ -5,7 +5,7 @@ pub use self::frosted::{FrostyClient, FrostyServer, ProcessSteps};
 
 mod frosted {
     use tokio::task;
-    use tracing::{debug, error, info, warn};
+    use tracing::{debug, error, warn};
 
     use std::{
         collections::{BTreeMap},

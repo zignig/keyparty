@@ -1,5 +1,5 @@
 use frost_ed25519::{
-    Identifier, VerifyingKey,
+    VerifyingKey,
     keys::{KeyPackage, PublicKeyPackage},
 };
 use iroh::{PublicKey, SecretKey};
@@ -62,11 +62,6 @@ impl Config {
         config
     }
 
-    pub fn set_peers(&mut self, peers: Vec<PublicKey>) {
-        self.peers = Some(peers);
-        self.save();
-    }
-
     pub fn get_key_pacakge(&self) -> Result<KeyPackage, AnyError> {
         match &self.key_package {
             Some(pack) => {
@@ -95,14 +90,6 @@ impl Config {
         }
     }
 
-    pub fn peers(self) -> Vec<PublicKey> {
-        match self.peers {
-            Some(peers) => peers,
-            None => vec![],
-        }
-    }
-
-    #[allow(dead_code)]
     pub fn secondaries(self) -> Vec<PublicKey> {
         match self.secondary_peers {
             Some(peers) => peers,

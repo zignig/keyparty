@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::{sync::mpsc::Receiver, sync::mpsc::Sender};
 
 use iroh::{
-    Endpoint, PublicKey, RelayMode, SecretKey, Signature, address_lookup::MdnsAddressLookup,
+    Endpoint, PublicKey, SecretKey, Signature, address_lookup::MdnsAddressLookup,
     protocol::RouterBuilder,
 };
 use iroh_gossip::{
@@ -243,7 +243,7 @@ pub async fn message_boop(
         // Send to gossip
         let g_mess = SignedMessage::sign_and_encode(&secret_key, &gm)?;
         let _ = gtx.broadcast(g_mess).await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
 

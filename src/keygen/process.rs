@@ -5,7 +5,7 @@
 // for the process
 
 use iroh::{Endpoint, PublicKey};
-use n0_error::{AnyError, Result, anyerr};
+use n0_error::{AnyError, Result};
 use std::{collections::BTreeMap, time::Duration};
 use tracing::{debug, error, info, warn};
 
