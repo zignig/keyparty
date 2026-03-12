@@ -3,9 +3,9 @@
 
 use iroh::{
     EndpointAddr, PublicKey,
-    endpoint::{AfterHandshakeOutcome, BeforeConnectOutcome, ConnectionInfo, EndpointHooks, Side},
+    endpoint::{AfterHandshakeOutcome, BeforeConnectOutcome, ConnectionInfo, EndpointHooks},
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 #[derive(Debug)]
 pub struct Authenticator {

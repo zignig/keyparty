@@ -172,7 +172,6 @@ impl SignerTask {
                     // Remap to identifiers and create the signing pacakage
                     let mut id_commitments: BTreeMap<Identifier, SigningCommitments> =
                         Default::default();
-                    // TODO , there are some edge cases on new nodes
                     for (key, com) in self.commitments.iter() {
                         let iden = self.id_map.get(key).ok_or("bad id")?;
                         // error!("map  : {:} --> {:?}", key.fmt_short(), iden);
@@ -187,7 +186,7 @@ impl SignerTask {
                     // Make and distrubute shares
                     let nonce = self.nonce.clone().ok_or("missing nonce")?;
                     let key_package = self.key_package.clone().ok_or("missing keypackage")?;
-                    
+
                     let signature_share =
                         frost::round2::sign(&signing_package, &nonce, &key_package);
                     match signature_share {
@@ -240,7 +239,9 @@ impl SignerTask {
                     // self.state = SState::Finished;
                 }
             }
-            SState::Finished => {}
+            SState::Finished => {
+                return Ok(true);
+            }
             SState::Fail => {
                 error!("FAIL!!! on keypakage");
                 return Err(anyerr!("package fail"));

@@ -27,6 +27,7 @@ pub struct DistributedKeyGeneration {
     ticket: FrostyTicket,
     state: ProcessSteps,
     my_id: PublicKey,
+    new_id: PublicKey,
 
     // identifier map based on secondary key public id
     ident_map: BTreeMap<PublicKey, Identifier>,
@@ -60,6 +61,8 @@ impl DistributedKeyGeneration {
         // and was still loading the  primary keys , the the identifiers were wrong.
 
         let my_id = endpoint.id();
+        let new_id = config.secondary().public();
+
         Self {
             config: config,
             endpoint: endpoint,
@@ -68,7 +71,8 @@ impl DistributedKeyGeneration {
             clients: Default::default(),
             ticket: ticket,
             state: ProcessSteps::Init,
-            my_id: my_id,
+            my_id,
+            new_id,
 
             ident_map: Default::default(),
             round1: Default::default(),
@@ -144,7 +148,8 @@ impl DistributedKeyGeneration {
                     // Need more robust check that we have all the nodes.
                     // connect is lazy and will only connect on action
                     let peers = self.auth_all().await?;
-                    self.config.set_peers(peers);
+                    info!("peer {:?}",peers);
+                    // self.config.set_peers(peers);
                     // some requests to be sure
 
                     // self.booper().await?;
@@ -159,45 +164,32 @@ impl DistributedKeyGeneration {
                 // this was a pita to track down, weird fails on signing side.
                 // wrong idents in the key matter.
                 ProcessSteps::Secondaries => {
-                    let pub_key = self.config.secondary().public();
-                    for (peer, client) in self.clients.iter() {
-                        let _ = client.send_secondary(pub_key).await;
-                        debug!("send secondary key to  {:?}", peer);
-                    }
-                    let mut exit = false;
-                    let mut counter = 0;
-                    const MAX_TRIES: i32 = 5;
-                    //  TODO , fix this to be client scanner.
-                    while !exit {
-                        let sec = self.local_rpc.fetch_secondary(None).await?;
-                        if sec.len() == self.ticket.max_shares as usize {
-                            exit = true
-                        }
-                        counter += 1;
-                        if counter == MAX_TRIES {
-                            return Err(anyerr!("fail secondary key"));
-                        }
-                        wait(100).await;
-                    }
-                    let sec_id = self.config.secondary().public();
-                    let sec = self.local_rpc.fetch_secondary(Some(sec_id)).await?;
-                    debug!("secondary keys {:?}", sec);
-                    self.config.save_secondary(sec);
                     // Get and map all the idents
+                    let mut sec = Vec::new();
                     for (peer, client) in self.clients.iter() {
-                        let ident = client.ident().await.unwrap();
+                        let pub_id = client.ident().await.unwrap();
                         debug!("remote ident  {:?}", peer);
+                        if pub_id != self.new_id {
+                            sec.push(pub_id);
+                        };
+                        let ident = Identifier::derive(pub_id.as_bytes()).expect("bad ident");
                         self.ident_map.insert(*peer, ident);
                     }
-                    info!("{:#?}",&self.ident_map);
+
+                    info!("{:#?}", &self.ident_map);
+                    self.config.save_secondary(sec);
+
                     self.state = ProcessSteps::Part1Send;
                     continue;
                 }
                 // Create the public pack and send to all the nodes including this one
                 ProcessSteps::Part1Send => {
                     info!("Part1 send");
+                    // let participant =
+                    //     Identifier::derive(self.my_id.as_bytes()).expect("bad identifier");
                     let participant =
-                        Identifier::derive(self.my_id.as_bytes()).expect("bad identifier");
+                        Identifier::derive(self.new_id.as_bytes()).expect("bad identifier");
+                    
                     let (round1_secret_package, round1_package) = frost::keys::dkg::part1(
                         participant,
                         self.ticket.max_shares,
@@ -252,7 +244,6 @@ impl DistributedKeyGeneration {
                     self.state = ProcessSteps::Part2Build;
                     continue;
                 }
-                // TODO convert to new identifiers
                 ProcessSteps::Part2Build => {
                     info!("Part 2 build");
                     // Build the correct map type
@@ -264,11 +255,13 @@ impl DistributedKeyGeneration {
                     // should not matter as they have been checked
                     if let Some(map) = self.round1.get(&self.my_id) {
                         for (id, pack) in map.iter() {
-                            let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
+                            // let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
+                            // mapped to the ident on  the new key for signing
+                            let ident = self.ident_map.get(id).ok_or("no peer")?;
                             // not well documented but don't include the round 1 package for _this_ client
                             if *id != self.my_id {
                                 id_key_map.insert(ident.clone(), id.clone());
-                                part1_map.insert(ident, pack.clone());
+                                part1_map.insert(*ident, pack.clone());
                             };
                         }
                         // Save this for part 3
@@ -312,7 +305,6 @@ impl DistributedKeyGeneration {
                     self.state = ProcessSteps::Part2Fetch;
                     continue;
                 }
-                // TODO convert to new identifiers
                 ProcessSteps::Part2Fetch => {
                     info!("Part 2 Fetch");
                     let mut exit = false;
@@ -329,8 +321,9 @@ impl DistributedKeyGeneration {
                     // This is fetching from local as it has the section given to this node
                     let mut packs = self.local_rpc.round2_fetch().await?;
                     while let Some((id, pack2)) = packs.recv().await?.transpose()? {
-                        let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
-                        self.round2_map_in.insert(ident, pack2);
+                        // let ident = Identifier::derive(id.as_bytes()).expect("bad identifier");
+                        let ident = self.ident_map.get(&id).ok_or("missing ident")?;
+                        self.round2_map_in.insert(*ident, pack2);
                     }
                     self.state = ProcessSteps::Part3Build;
                     continue;

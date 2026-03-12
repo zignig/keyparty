@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
 
             keygen::run(config.clone(), args).await
 
-            // TODO , run up the signer in base mode.
+            // FIX , run up the signer in base mode.
             // use preparty to generate RBAC keys
             // let new_args = cli::Args {
             //     command: Command::Sign { message: None },

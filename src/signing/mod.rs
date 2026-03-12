@@ -62,20 +62,25 @@ pub enum GossipMessage {
 pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
     info!("-- Start the signing party --");
 
-    let secret = config.secret().clone();
-    let peers = config.clone().peers();
+    // let secret = config.secret().clone();
+    // let peers = config.clone().peers();
+
+    let secret = config.secondary().clone();
+    let peers = config.clone().secondaries().clone();
 
     let auth_hook = Authenticator::new(peers.clone());
 
     let endpoint = Endpoint::builder()
         .secret_key(secret.clone())
-        .relay_mode(RelayMode::Disabled)
+        // .relay_mode(RelayMode::Disabled)
         .hooks(auth_hook)
         .bind()
         .await?;
 
-    // let _ = endpoint.online().await;
-
+    
+    let _ = endpoint.online().await;
+    info!("Endpoint Online");
+    
     // temp until the internet is fixed
 
     let mdns = MdnsAddressLookup::builder().build(endpoint.id()).unwrap();
@@ -210,7 +215,7 @@ pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     }
 }
 
-// TODO , some testing to inject signing messages
+// TESTING , some testing to inject signing messages
 pub async fn message_boop(
     id: PublicKey,
     tx: Sender<SigEvents>,

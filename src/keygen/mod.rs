@@ -12,32 +12,32 @@ use crate::{
     ticket::FrostyTicket,
 };
 
-use iroh::{Endpoint, RelayMode,address_lookup::MdnsAddressLookup};
+use iroh::Endpoint;
 use iroh_tickets::Ticket;
 use n0_error::Result;
 use tokio::task;
 use tracing::info;
 
 pub async fn run(config: Config, args: Args) -> Result<()> {
-    // let endpoint = Endpoint::builder()
-    //     .secret_key(config.secret())
-    //     .bind()
-    //     .await?;
-
     let endpoint = Endpoint::builder()
-        .secret_key(config.secret())
-        .relay_mode(RelayMode::Disabled)
+        // .secret_key(config.secret())
         .bind()
         .await?;
 
-    // temp until the internet is fixed
+    // let endpoint = Endpoint::builder()
+    //     .secret_key(config.secret())
+    //     .relay_mode(RelayMode::Disabled)
+    //     .bind()
+    //     .await?;
 
-    let mdns = MdnsAddressLookup::builder().build(endpoint.id()).unwrap();
-    endpoint.address_lookup().add(mdns.clone());
+    // // temp until the internet is fixed
+
+    // let mdns = MdnsAddressLookup::builder().build(endpoint.id()).unwrap();
+    // endpoint.address_lookup().add(mdns.clone());
 
     // get online
     info!("Get online");
-    // let _ = endpoint.online().await;
+    let _ = endpoint.online().await;
     println!("{:#?}", args);
     info!("{}", &endpoint.id());
 
@@ -52,11 +52,9 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
         Command::Sign { .. } => return Ok(()),
     };
 
-    // share the identifier of the secondary key
-    let ident = config.identifier();
-    
     // make the frosty server
-    let frosty_rpc = FrostyServer::new(token.clone(), max as usize, endpoint.id(),ident);
+    let secondary = config.secondary().public();
+    let frosty_rpc = FrostyServer::new(token.clone(), max as usize, endpoint.id(), secondary);
 
     // create a local client
     let local_rpc = frosty_rpc.clone().local();

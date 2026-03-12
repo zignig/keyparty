@@ -8,7 +8,7 @@ mod frosted {
     use tracing::{debug, error, info, warn};
 
     use std::{
-        collections::{BTreeMap, BTreeSet},
+        collections::{BTreeMap},
         sync::{
             Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
@@ -19,7 +19,7 @@ mod frosted {
 
     // Key Package imports
     use frost_ed25519::keys::dkg::round2::Package as R2Package;
-    use frost_ed25519::{Identifier, keys::dkg::round1::Package as R1package};
+    use frost_ed25519::{ keys::dkg::round1::Package as R1package};
 
     use iroh::{
         Endpoint, EndpointId, PublicKey,
@@ -94,14 +94,6 @@ mod frosted {
     struct Finish;
 
     #[derive(Debug, Serialize, Deserialize)]
-    struct SecondarySend {
-        id: PublicKey,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct SecondaryList;
-
-    #[derive(Debug, Serialize, Deserialize)]
     struct Ident;
 
     // Use the macro to generate both the messages and the protocol
@@ -149,16 +141,8 @@ mod frosted {
         #[rpc(tx=mpsc::Sender<Result<(PublicKey,R2Package),String>>)]
         Part2Fetch(Part2Fetch),
 
-        // Send the secondary key
-        #[rpc(tx=oneshot::Sender<()>)]
-        SecondarySend(SecondarySend),
-
-        // Get the secondary list
-        #[rpc(tx=mpsc::Sender<PublicKey>)]
-        SecondaryList(SecondaryList),
-
         // Get the ident of this node
-        #[rpc(tx=oneshot::Sender<Identifier>)]
+        #[rpc(tx=oneshot::Sender<PublicKey>)]
         Ident(Ident),
 
         // Finish The Transaction
@@ -172,12 +156,11 @@ mod frosted {
     pub struct FrostyServer {
         max_peers: usize,
         peers: Arc<Mutex<BTreeMap<EndpointId, String>>>,
-        secondary_peers: Arc<Mutex<BTreeSet<EndpointId>>>,
         peer_count: Arc<AtomicUsize>,
         counter: Arc<AtomicUsize>,
         auth_token: String,
         my_id: PublicKey,
-        identifier: Identifier,
+        new_id: PublicKey,
         // Crypto bits
         r1packages: Arc<Mutex<BTreeMap<EndpointId, R1package>>>,
         r2packages: Arc<Mutex<BTreeMap<EndpointId, R2Package>>>,
@@ -235,17 +218,16 @@ mod frosted {
             auth_token: String,
             max_peers: usize,
             my_id: PublicKey,
-            identifier: Identifier,
+            new_id : PublicKey,
         ) -> Self {
             let s = Self {
                 max_peers: max_peers,
                 peers: Default::default(),
-                secondary_peers: Default::default(),
                 peer_count: Arc::new(AtomicUsize::new(0)),
                 counter: Arc::new(AtomicUsize::new(0)),
                 auth_token,
                 my_id,
-                identifier,
+                new_id,
                 r1packages: Default::default(),
                 r2packages: Default::default(),
             };
@@ -379,34 +361,12 @@ mod frosted {
                     }
                 }
 
-                FrostyMessage::SecondarySend(key) => {
-                    info!("secondary key");
-                    let WithChannels { tx, inner, .. } = key;
-                    // don't save my id
-                    self.secondary_peers.lock().unwrap().insert(inner.id);
-                    tx.send(()).await.ok();
-                }
-
-                FrostyMessage::SecondaryList(tx) => {
-                    let WithChannels { tx, .. } = tx;
-                    let secondaries: Vec<PublicKey> = self
-                        .secondary_peers
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .map(|id| id.clone())
-                        .collect();
-                    for key in secondaries {
-                        if tx.send(key.clone()).await.is_err() {
-                            break;
-                        };
-                    }
-                }
-
+                // Send the new ID to friends
                 FrostyMessage::Ident(tx) => {
                     let WithChannels { tx, .. } = tx;
-                    tx.send(self.identifier).await.expect("bad ident");
+                    tx.send(self.new_id).await.expect("bad ident");
                 }
+                
                 FrostyMessage::Finish(fin) => {
                     warn!("Finishing Transaction");
                     let WithChannels { tx, .. } = fin;
@@ -495,30 +455,7 @@ mod frosted {
             self.inner.rpc(Boop {}).await
         }
 
-        pub async fn send_secondary(&self, id: PublicKey) {
-            self.inner
-                .rpc(SecondarySend { id })
-                .await
-                .expect("send failed")
-        }
-
-        pub async fn fetch_secondary(&self, exclude: Option<PublicKey>) -> Result<Vec<PublicKey>> {
-            let mut keys: Vec<PublicKey> = Vec::new();
-            let mut item = self.inner.server_streaming(SecondaryList {}, 10).await?;
-            while let Some(key) = item.recv().await? {
-                match exclude {
-                    Some(exclude) => {
-                        if key != exclude {
-                            keys.push(key)
-                        };
-                    }
-                    None => keys.push(key),
-                }
-            }
-            Ok(keys)
-        }
-
-        pub async fn ident(&self) -> Result<Identifier, irpc::Error> {
+        pub async fn ident(&self) -> Result<PublicKey, irpc::Error> {
             self.inner.rpc(Ident {}).await
         }
 

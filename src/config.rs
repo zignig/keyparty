@@ -9,7 +9,6 @@ use tracing::error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    secret: SecretKey,
     secondary_key: SecretKey,
     peers: Option<Vec<PublicKey>>,
     secondary_peers: Option<Vec<PublicKey>>,
@@ -46,10 +45,10 @@ impl Config {
     }
 
     pub fn new() -> Config {
-        let secret_key = SecretKey::generate(&mut new_rand::rng());
+        // let secret_key = SecretKey::generate(&mut new_rand::rng());
         let secondary_key = SecretKey::generate(&mut new_rand::rng());
         let config = Config {
-            secret: secret_key,
+            // secret: secret_key,
             secondary_key: secondary_key,
             peers: None,
             secondary_peers: None,
@@ -138,18 +137,14 @@ impl Config {
         self.secondary_key.clone()
     }
 
-    pub fn identifier(&self) -> Identifier {
-        Identifier::derive(self.secondary_key.public().as_bytes()).unwrap()
-    }
-
     pub fn save_secondary(&mut self, secondaries: Vec<PublicKey>) {
         self.secondary_peers = Some(secondaries);
         self.save();
     }
 
-    pub fn secret(&self) -> SecretKey {
-        self.secret.clone()
-    }
+    // pub fn secret(&self) -> SecretKey {
+    //     self.secret.clone()
+    // }
 
     pub fn min(&self) -> usize {
         self.min as usize
