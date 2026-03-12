@@ -25,5 +25,7 @@ pub enum Command {
     },
     Sign {
         message: Option<Bytes>,
+        #[arg(long,short, default_value_t = false)]
+        service: bool,
     },
 }

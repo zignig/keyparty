@@ -7,6 +7,9 @@ use iroh::{
 };
 use tracing::{debug, warn};
 
+
+// Authentication for the signing quorum
+
 #[derive(Debug)]
 pub struct Authenticator {
     peers: Vec<PublicKey>,

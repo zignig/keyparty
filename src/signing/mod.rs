@@ -25,6 +25,9 @@ use crate::{cli::Args, config::Config};
 mod auth;
 mod quorum;
 mod signer;
+mod validator;
+mod service;
+
 
 use auth::Authenticator;
 
@@ -59,14 +62,14 @@ pub enum GossipMessage {
 }
 
 // Init and run the signing party.
-pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<()> {
+pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_service: bool) -> Result<()> {
     info!("-- Start the signing party --");
 
     // let secret = config.secret().clone();
     // let peers = config.clone().peers();
 
-    let secret = config.secondary().clone();
-    let peers = config.clone().secondaries().clone();
+    let secret = config.secret().clone();
+    let peers = config.clone().get_peers().clone();
 
     let auth_hook = Authenticator::new(peers.clone());
 
@@ -77,10 +80,9 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         .bind()
         .await?;
 
-    
     let _ = endpoint.online().await;
     info!("Endpoint Online");
-    
+
     // temp until the internet is fixed
 
     let mdns = MdnsAddressLookup::builder().build(endpoint.id()).unwrap();
@@ -142,6 +144,12 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
         ));
     }
 
+    // if the service flag is set , create  the service node
+    if run_service {
+        warn!("Start  the external service");
+        error!("not working yet.");
+        service::run().await;
+    }
     // Wait for exit.
     tokio::signal::ctrl_c().await?;
 

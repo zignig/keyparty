@@ -42,9 +42,9 @@ async fn main() -> Result<()> {
     let res = match args.command {
         Command::Generate { .. } | Command::Join { .. } => {
             // So it gets dropped
-
-            keygen::run(config.clone(), args).await
-
+            {
+                keygen::run(config.clone(), args).await
+            }
             // FIX , run up the signer in base mode.
             // use preparty to generate RBAC keys
             // let new_args = cli::Args {
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
             // };
             // signing::run(config, new_args, None).await
         }
-        Command::Sign { ref message } => signing::run(config, args.clone(), message.clone()).await,
+        Command::Sign { ref message, service } => signing::run(config, args.clone(), message.clone(),service).await,
     };
     info!("{:#?}", res);
     Ok(())

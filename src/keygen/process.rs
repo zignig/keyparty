@@ -61,7 +61,7 @@ impl DistributedKeyGeneration {
         // and was still loading the  primary keys , the the identifiers were wrong.
 
         let my_id = endpoint.id();
-        let new_id = config.secondary().public();
+        let new_id = config.secret().public();
 
         Self {
             config: config,
@@ -148,7 +148,7 @@ impl DistributedKeyGeneration {
                     // Need more robust check that we have all the nodes.
                     // connect is lazy and will only connect on action
                     let peers = self.auth_all().await?;
-                    info!("peer {:?}",peers);
+                    debug!("peers available {:?}",peers);
                     // self.config.set_peers(peers);
                     // some requests to be sure
 
@@ -176,8 +176,8 @@ impl DistributedKeyGeneration {
                         self.ident_map.insert(*peer, ident);
                     }
 
-                    info!("{:#?}", &self.ident_map);
-                    self.config.save_secondary(sec);
+                    debug!("{:#?}", &self.ident_map);
+                    self.config.save_peers(sec);
 
                     self.state = ProcessSteps::Part1Send;
                     continue;

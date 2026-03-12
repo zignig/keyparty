@@ -84,6 +84,7 @@ impl SignerTask {
             incoming: rx,
             outgoing,
             nodes,
+            
             key_package,
             public_package,
             nonce: None,

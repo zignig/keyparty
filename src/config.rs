@@ -9,9 +9,8 @@ use tracing::error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    secondary_key: SecretKey,
+    secret: SecretKey,
     peers: Option<Vec<PublicKey>>,
-    secondary_peers: Option<Vec<PublicKey>>,
 
     // encoded
     key_package: Option<String>,
@@ -45,13 +44,10 @@ impl Config {
     }
 
     pub fn new() -> Config {
-        // let secret_key = SecretKey::generate(&mut new_rand::rng());
-        let secondary_key = SecretKey::generate(&mut new_rand::rng());
-        let config = Config {
-            // secret: secret_key,
-            secondary_key: secondary_key,
+        let secret = SecretKey::generate(&mut new_rand::rng());
+        let config: Config = Config {
+            secret,
             peers: None,
-            secondary_peers: None,
             key_package: None,
             public_package: None,
             verify_key: None,
@@ -90,8 +86,8 @@ impl Config {
         }
     }
 
-    pub fn secondaries(self) -> Vec<PublicKey> {
-        match self.secondary_peers {
+    pub fn get_peers(self) -> Vec<PublicKey> {
+        match self.peers {
             Some(peers) => peers,
             None => vec![],
         }
@@ -120,18 +116,14 @@ impl Config {
         self.verify_key
     }
 
-    pub fn secondary(&self) -> SecretKey {
-        self.secondary_key.clone()
+    pub fn secret(&self) -> SecretKey {
+        self.secret.clone()
     }
 
-    pub fn save_secondary(&mut self, secondaries: Vec<PublicKey>) {
-        self.secondary_peers = Some(secondaries);
+    pub fn save_peers(&mut self, peers: Vec<PublicKey>) {
+        self.peers = Some(peers);
         self.save();
     }
-
-    // pub fn secret(&self) -> SecretKey {
-    //     self.secret.clone()
-    // }
 
     pub fn min(&self) -> usize {
         self.min as usize

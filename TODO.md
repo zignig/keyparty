@@ -1,4 +1,11 @@
-# Some todo stuff 
+# Next stuff
+
+1. hook up the validator
+1. add external irpc client for signing
+
+# Outstanding stuff 
+
+## Some todo stuff 
 
 1. harden endpoints and process to make it hard to cheat.
 1. add finished event to drop the key gen structs.

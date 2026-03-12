@@ -53,7 +53,7 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
     };
 
     // make the frosty server
-    let secondary = config.secondary().public();
+    let secondary = config.secret().public();
     let frosty_rpc = FrostyServer::new(token.clone(), max as usize, endpoint.id(), secondary);
 
     // create a local client
