@@ -22,12 +22,12 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let mut filter = Targets::new();
     match args.verbose {
-        0 => filter = filter.with_target("frosty", LevelFilter::INFO),
-        1 => filter = filter.with_target("frosty", LevelFilter::DEBUG),
+        0 => filter = filter.with_target("keyparty", LevelFilter::INFO),
+        1 => filter = filter.with_target("keyparty", LevelFilter::DEBUG),
         2 => {
             filter = filter
                 .with_target("iroh", LevelFilter::DEBUG)
-                .with_target("frosty", LevelFilter::DEBUG)
+                .with_target("keyparty", LevelFilter::DEBUG)
         }
         _ => {}
     };

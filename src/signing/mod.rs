@@ -7,13 +7,14 @@ use std::time::Duration;
 use tokio::{sync::mpsc::Receiver, sync::mpsc::Sender};
 
 use iroh::{
-    Endpoint, PublicKey, RelayMode, SecretKey, Signature, discovery::mdns::MdnsDiscovery,
+    Endpoint, PublicKey, RelayMode, SecretKey, Signature, address_lookup::MdnsAddressLookup,
     protocol::RouterBuilder,
 };
 use iroh_gossip::{
     ALPN as GOSSIP_APLN, Gossip, TopicId,
     api::{Event, GossipReceiver, GossipSender},
 };
+
 use n0_error::{AnyError, Result};
 use n0_future::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ use crate::{cli::Args, config::Config};
 mod auth;
 mod quorum;
 mod signer;
+
+use auth::Authenticator;
 
 pub const BEACON_DURATION: u64 = 1u64;
 
@@ -60,18 +63,23 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     info!("-- Start the signing party --");
 
     let secret = config.secret().clone();
+    let peers = config.clone().peers();
+
+    let auth_hook = Authenticator::new(peers.clone());
+
     let endpoint = Endpoint::builder()
         .secret_key(secret.clone())
         .relay_mode(RelayMode::Disabled)
+        .hooks(auth_hook)
         .bind()
         .await?;
 
     // let _ = endpoint.online().await;
 
     // temp until the internet is fixed
-    let mdns = MdnsDiscovery::builder().build(endpoint.id()).unwrap();
-    endpoint.discovery().add(mdns.clone());
 
+    let mdns = MdnsAddressLookup::builder().build(endpoint.id()).unwrap();
+    endpoint.address_lookup().add(mdns.clone());
     // Build all signing bits
     // Convert to an actor.
 
@@ -85,14 +93,12 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>) -> Result<
     // TODO fix this topic
     let topic_id = TopicId::from_bytes([5; 32]);
 
-    let peers = config.clone().peers();
-
     for peer in peers.iter() {
         info!("Waiting for peer : {:}", peer.fmt_short());
     }
 
     let goss = gossip.subscribe_and_join(topic_id, peers.clone()).await?;
-    
+
     let my_id = secret.public();
 
     let (tx, rx) = goss.split();

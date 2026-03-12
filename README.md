@@ -21,7 +21,7 @@ frostysorelsfb2zbrj6dz7pvxqwnhsuhujiouvtdbbwhqw5b7hmeamtxaiytpojvqgaq
 then from another machine or folder with the frosty binary
 
 ```
-./frosty join frostysorelsfb2zbrj6dz7pvxqwnhsuhujiouvtdbbwhqw5b7hmeamtxaiytpojvqgaq
+./keyparty join frostysorelsfb2zbrj6dz7pvxqwnhsuhujiouvtdbbwhqw5b7hmeamtxaiytpojvqgaq
 ```
 
 The program will connect , and wait until there are enough friends and then run through the

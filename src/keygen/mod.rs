@@ -12,7 +12,7 @@ use crate::{
     ticket::FrostyTicket,
 };
 
-use iroh::{Endpoint, RelayMode, discovery::mdns::MdnsDiscovery};
+use iroh::{Endpoint, RelayMode,address_lookup::MdnsAddressLookup};
 use iroh_tickets::Ticket;
 use n0_error::Result;
 use tokio::task;
@@ -31,8 +31,9 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
         .await?;
 
     // temp until the internet is fixed
-    let mdns = MdnsDiscovery::builder().build(endpoint.id()).unwrap();
-    endpoint.discovery().add(mdns.clone());
+
+    let mdns = MdnsAddressLookup::builder().build(endpoint.id()).unwrap();
+    endpoint.address_lookup().add(mdns.clone());
 
     // get online
     info!("Get online");

@@ -46,8 +46,8 @@ impl Config {
     }
 
     pub fn new() -> Config {
-        let secret_key = SecretKey::generate(&mut rand::rng());
-        let secondary_key = SecretKey::generate(&mut rand::rng());
+        let secret_key = SecretKey::generate(&mut new_rand::rng());
+        let secondary_key = SecretKey::generate(&mut new_rand::rng());
         let config = Config {
             secret: secret_key,
             secondary_key: secondary_key,
