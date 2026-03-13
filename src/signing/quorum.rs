@@ -127,16 +127,6 @@ impl QuorumWatcher {
             QuorumSteps::Quorum => {
                 debug!("Quorum Mode");
 
-                if self.key_package.is_none() {
-                    info!("key package loaded");
-                    self.key_package = Some(self.config.get_key_pacakge()?);
-                };
-
-                if self.public_package.is_none() {
-                    info!("public  package loaded");
-                    self.public_package = Some(self.config.get_public_package()?);
-                };
-
                 debug!("transactions : {:?}", self.transactions.keys());
                 debug!("event: {:#?}", &event.message);
                 match event.message {
@@ -148,6 +138,16 @@ impl QuorumWatcher {
                         let id = event.id;
                         match &message.event {
                             SigEvent::Start { sig_message } => {
+                                // load the packages.
+                                if self.key_package.is_none() {
+                                    info!("key package loaded");
+                                    self.key_package = Some(self.config.get_key_pacakge()?);
+                                };
+
+                                if self.public_package.is_none() {
+                                    info!("public  package loaded");
+                                    self.public_package = Some(self.config.get_public_package()?);
+                                };
                                 // this starts an actor on each endpoint
                                 // through redirection
                                 if !self.transactions.contains_key(&transaction_id) {

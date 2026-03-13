@@ -2,6 +2,7 @@
 
 1. hook up the validator
 1. add external irpc client for signing
+1. send complete transaction back to the gossip with enum of state
 
 # Outstanding stuff 
 
@@ -16,7 +17,6 @@
 
 ## Signing
 
-- new endpoint
 - itegrate chat ? 
 - show/process message and ask Y/N from the endpoint before signing
 - deal with large messages (4Kb on gossip messages) , ?integrate blob distribution.
@@ -27,6 +27,7 @@
 
 Maintaining quorm is harder than it looks.
 
+1. send quorum and lost_quorum to the gossip channel.
 1. need to use hello messages to watch for node changes.
 1. add quorum messages , gained / lost through the gossip channel.
 
@@ -55,6 +56,8 @@ Maintaining quorm is harder than it looks.
 1. move the key generation data into it's own struct.
 1. have auth hooks that only allow participants
 1. each node is a coordinator
+1. new endpoint
+
 
 ## Done move secondary keys into the keygen, 
 
