@@ -87,7 +87,7 @@ impl QuorumWatcher {
             warn!("node down !!! : {:}", &event.id.fmt_short());
             self.online_peers.remove(&event.id);
             warn!("{:#?}", &self.online_peers);
-            if self.online_peers.len() <= (self.config.min()) {
+            if self.online_peers.len() < (self.config.min()) {
                 warn!("quorum lost!");
                 self.state = QuorumSteps::Preparty;
                 return Ok(());
@@ -189,7 +189,7 @@ impl QuorumWatcher {
         if let Some(tx) = self.transactions.get(&event.transaction_id) {
             tx.send((id, event)).await.expect("bad routing");
         } else {
-            error!("Missign transaction {}", &event.transaction_id);
+            error!("Missing transaction {}", &event.transaction_id);
             // return Err(anyerr!("missing transaction"));
         }
         Ok(())

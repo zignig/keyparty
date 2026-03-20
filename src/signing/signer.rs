@@ -6,7 +6,7 @@ use frost::{
     keys::KeyPackage,
     round1::{SigningCommitments, SigningNonces},
 };
-use frost_ed25519::{self as frost, keys::PublicKeyPackage, round2::SignatureShare};
+use frost_ed25519::{self as frost, Signature, keys::PublicKeyPackage, round2::SignatureShare};
 use iroh::PublicKey;
 use n0_error::{AnyError, Result, anyerr};
 use std::{
@@ -24,9 +24,9 @@ use crate::signing::{GossipMessage, SigEvent, TransMessage};
 #[derive(Debug)]
 enum SState {
     Start,
-    Check,
     Round1,
     Round2,
+    Check,
     Finished,
     Fail,
 }
@@ -50,10 +50,12 @@ pub struct SignerTask {
     // round 2
     signing_package: Option<SigningPackage>,
     signing_shares: BTreeMap<PublicKey, SignatureShare>,
+    // output
+    signatures: BTreeMap<PublicKey, Signature>,
 }
 
 impl SignerTask {
-    const TIME_OUT: Duration = Duration::from_secs(1);
+    const TIME_OUT: Duration = Duration::from_secs(2);
 
     // Make a new one
     pub async fn new(
@@ -84,13 +86,14 @@ impl SignerTask {
             incoming: rx,
             outgoing,
             nodes,
-            
+
             key_package,
             public_package,
             nonce: None,
             commitments: Default::default(),
             signing_package: None,
             signing_shares: Default::default(),
+            signatures: Default::default(),
             id_map,
         };
         (tx, sel)
@@ -143,7 +146,9 @@ impl SignerTask {
                 self.signing_shares.insert(id, share.clone());
             }
 
-            SigEvent::Collect => {}
+            SigEvent::Collect { signature } => {
+                self.signatures.insert(id, signature.clone());
+            }
             SigEvent::Compare => {}
         };
 
@@ -151,17 +156,13 @@ impl SignerTask {
         match self.state {
             SState::Start => {
                 info!("[signer] Start");
-                self.state = SState::Check;
             }
-            SState::Check => {
-                info!("[signer] Check");
-                self.state = SState::Round1;
-            }
+
             SState::Round1 => {
-                info!("[signer] Round1");
+                debug!("[signer] Round1");
                 let ids: Vec<PublicKey> = self.commitments.keys().map(|id| id.clone()).collect();
                 for id in ids.iter() {
-                    info!("{:}", id.fmt_short());
+                    debug!("{:}", id.fmt_short());
                 }
                 // do I have all the commitments ?
                 if self
@@ -205,10 +206,10 @@ impl SignerTask {
             }
 
             SState::Round2 => {
-                info!("[signer] Round1");
+                debug!("[signer] Round1");
                 let ids: Vec<PublicKey> = self.signing_shares.keys().map(|id| id.clone()).collect();
                 for id in ids.iter() {
-                    info!("{:}", id.fmt_short());
+                    debug!("{:}", id.fmt_short());
                 }
                 if self
                     .nodes
@@ -235,18 +236,39 @@ impl SignerTask {
                     let group_signature =
                         frost::aggregate(&signing_package, &sig_share, &public_package)
                             .expect("bad group signature");
-                    error!(" WOO HOO !!! ---- {:#?}", group_signature);
-                    return Ok(true);
-                    // self.state = SState::Finished;
+                    // info!(" WOO HOO !!! ---- {:#?}", group_signature);
+
+                    self.signatures.insert(self.my_id, group_signature);
+                    self.send_out(SigEvent::Collect {
+                        signature: group_signature,
+                    })
+                    .await?;
+                    self.state = SState::Check;
                 }
             }
+
+            SState::Check => {
+                info!("[signer] Check");
+                if self
+                    .nodes
+                    .iter()
+                    .all(|key| self.signatures.contains_key(key))
+                {
+                    info!("-> finish");
+                    self.send_out(SigEvent::Compare).await?;
+                    self.state = SState::Finished;
+                }
+            }
+
             SState::Finished => {
                 return Ok(true);
             }
+
             SState::Fail => {
                 error!("FAIL!!! on keypakage");
                 return Err(anyerr!("package fail"));
             }
+
         }
         Ok(false)
     }

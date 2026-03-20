@@ -1,13 +1,13 @@
 // Signing can be done with a gossip channel
 
 use bytes::Bytes;
-use frost_ed25519::{round1::SigningCommitments, round2::SignatureShare};
+use frost_ed25519::{round1::SigningCommitments, round2::SignatureShare,Signature as FrostSig};
 use std::time::Duration;
 
 use tokio::{sync::mpsc::Receiver, sync::mpsc::Sender};
 
 use iroh::{
-    Endpoint, PublicKey, SecretKey, Signature, address_lookup::MdnsAddressLookup,
+    Endpoint, PublicKey, SecretKey,Signature,
     protocol::RouterBuilder,
 };
 use iroh_gossip::{
@@ -31,7 +31,7 @@ mod service;
 
 use auth::Authenticator;
 
-pub const BEACON_DURATION: u64 = 1u64;
+pub const BEACON_DURATION: u64 = 5u64;
 
 // Message Structs
 // https://frost.zfnd.org/tutorial/signing.html for info.
@@ -41,7 +41,7 @@ pub enum SigEvent {
     Start { sig_message: Bytes },
     Round1 { commitment: SigningCommitments },
     Round2 { share: SignatureShare },
-    Collect,
+    Collect { signature: FrostSig },
     Compare,
 }
 
@@ -65,9 +65,6 @@ pub enum GossipMessage {
 pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_service: bool) -> Result<()> {
     info!("-- Start the signing party --");
 
-    // let secret = config.secret().clone();
-    // let peers = config.clone().peers();
-
     let secret = config.secret().clone();
     let peers = config.clone().get_peers().clone();
 
@@ -75,20 +72,12 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
 
     let endpoint = Endpoint::builder()
         .secret_key(secret.clone())
-        // .relay_mode(RelayMode::Disabled)
         .hooks(auth_hook)
         .bind()
         .await?;
 
     let _ = endpoint.online().await;
     info!("Endpoint Online");
-
-    // temp until the internet is fixed
-
-    let mdns = MdnsAddressLookup::builder().build(endpoint.id()).unwrap();
-    endpoint.address_lookup().add(mdns.clone());
-    // Build all signing bits
-    // Convert to an actor.
 
     let gossip = Gossip::builder().spawn(endpoint.clone());
 
@@ -251,7 +240,7 @@ pub async fn message_boop(
         // Send to gossip
         let g_mess = SignedMessage::sign_and_encode(&secret_key, &gm)?;
         let _ = gtx.broadcast(g_mess).await;
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 
