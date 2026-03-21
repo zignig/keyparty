@@ -25,7 +25,7 @@ use irpc_iroh::{IrohLazyRemoteConnection, read_request};
 pub async fn run(config: Config) -> Result<()> {
     info!("run the external service");
     let secret_key = config.get_service_key();
-
+    println!("service id {}",secret_key.public());
     let (hook,proto) = auth::outgoing();
 
     let endpoint = Endpoint::builder(presets::N0)
