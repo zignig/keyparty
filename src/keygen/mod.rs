@@ -20,20 +20,8 @@ use tracing::info;
 
 pub async fn run(config: Config, args: Args) -> Result<()> {
     let endpoint = Endpoint::builder(presets::N0)
-        // .secret_key(config.secret())
         .bind()
         .await?;
-
-    // let endpoint = Endpoint::builder()
-    //     .secret_key(config.secret())
-    //     .relay_mode(RelayMode::Disabled)
-    //     .bind()
-    //     .await?;
-
-    // // temp until the internet is fixed
-
-    // let mdns = MdnsAddressLookup::builder().build(endpoint.id()).unwrap();
-    // endpoint.address_lookup().add(mdns.clone());
 
     // get online
     info!("Get online");

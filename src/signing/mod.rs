@@ -136,7 +136,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
     if run_service {
         warn!("Start  the external service");
         error!("not working yet.");
-        service::run().await;
+        tokio::spawn(service::run(config.clone()));
     }
     // Wait for exit.
     tokio::signal::ctrl_c().await?;

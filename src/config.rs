@@ -124,6 +124,10 @@ impl Config {
         self.secret.clone()
     }
 
+    pub fn get_service_key(&self) -> SecretKey { 
+        self.service_key.clone()
+    }
+    
     pub fn save_peers(&mut self, peers: Vec<PublicKey>) {
         self.peers = Some(peers);
         self.save();

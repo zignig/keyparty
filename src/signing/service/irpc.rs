@@ -1,28 +1,14 @@
-// Second endpoint for a signing service
-// should have auth ( base on rcan )
-// and a signing irpc interface
+// IRPC interface
 
-// has
-// Sign( BLOB )
-// Signature ( Signature )
-// Status
-// Errors from the signing machine
-
+use iroh::protocol::{AcceptError, ProtocolHandler};
 use serde::{Deserialize, Serialize};
-use tracing::info;
+
 
 use irpc::{
     Client, WithChannels,
     channel::{mpsc, oneshot},
     rpc_requests,
 };
-use irpc_iroh::{IrohLazyRemoteConnection, read_request};
-
-pub async fn run() {
-    info!("run the external service");
-}
-
-// IRPC interface
 
 // Irpc structs
 #[derive(Debug, Serialize, Deserialize)]
@@ -37,5 +23,13 @@ enum RemoteSigner {
     ToSign(ToSign),
 }
 
+#[derive(Debug)]
+pub struct ServiceActor {
+    name: String,
+}
 
-
+impl ProtocolHandler for ServiceActor {
+    async fn accept(&self, connection: iroh::endpoint::Connection) -> Result<(), AcceptError> {
+        todo!()
+    }
+}
