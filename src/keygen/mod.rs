@@ -12,14 +12,14 @@ use crate::{
     ticket::FrostyTicket,
 };
 
-use iroh::Endpoint;
+use iroh::{Endpoint, endpoint::presets};
 use iroh_tickets::Ticket;
 use n0_error::Result;
 use tokio::task;
 use tracing::info;
 
 pub async fn run(config: Config, args: Args) -> Result<()> {
-    let endpoint = Endpoint::builder()
+    let endpoint = Endpoint::builder(presets::N0)
         // .secret_key(config.secret())
         .bind()
         .await?;

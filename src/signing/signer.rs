@@ -69,14 +69,11 @@ impl SignerTask {
     ) -> (Sender<(PublicKey, TransMessage)>, Self) {
         let (tx, rx) = tokio::sync::mpsc::channel::<(PublicKey, TransMessage)>(5);
 
-        // error!("nodes = {:#?}", &nodes);
-
         let mut id_map: BTreeMap<PublicKey, Identifier> = BTreeMap::new();
         for node in nodes.iter() {
             id_map.insert(*node, Identifier::derive(node.as_bytes()).expect("bork"));
         }
 
-        // error!("{:?}", &id_map);
 
         let sel = Self {
             my_id,

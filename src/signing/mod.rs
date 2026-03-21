@@ -7,8 +7,7 @@ use std::time::Duration;
 use tokio::{sync::mpsc::Receiver, sync::mpsc::Sender};
 
 use iroh::{
-    Endpoint, PublicKey, SecretKey,Signature,
-    protocol::RouterBuilder,
+    Endpoint, PublicKey, SecretKey, Signature, endpoint::presets, protocol::RouterBuilder
 };
 use iroh_gossip::{
     ALPN as GOSSIP_APLN, Gossip, TopicId,
@@ -70,7 +69,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
 
     let auth_hook = Authenticator::new(peers.clone());
 
-    let endpoint = Endpoint::builder()
+    let endpoint = Endpoint::builder(presets::N0)
         .secret_key(secret.clone())
         .hooks(auth_hook)
         .bind()

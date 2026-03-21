@@ -10,6 +10,7 @@ use tracing::error;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     secret: SecretKey,
+    service_key: SecretKey,
     peers: Option<Vec<PublicKey>>,
 
     // encoded
@@ -45,8 +46,11 @@ impl Config {
 
     pub fn new() -> Config {
         let secret = SecretKey::generate(&mut new_rand::rng());
+        let service_key = SecretKey::generate(&mut new_rand::rng());
+
         let config: Config = Config {
             secret,
+            service_key,
             peers: None,
             key_package: None,
             public_package: None,
