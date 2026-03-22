@@ -1,10 +1,12 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use clap::Parser;
-use iroh::{
-    Endpoint,
-    endpoint::{self, presets},
-};
-use tracing::warn;
+use iroh::{Endpoint, endpoint::presets};
+use tokio::time;
+use tracing::{info, warn};
+
+
 
 mod config {
     use iroh::{PublicKey, SecretKey};
@@ -16,6 +18,7 @@ mod config {
     pub struct Settings {
         secret: SecretKey,
         target: Option<PublicKey>,
+        rcan: String
     }
 
     impl Settings {
@@ -43,6 +46,7 @@ mod config {
             let set = Settings {
                 secret,
                 target: None,
+                rcan: "".to_string(),
             };
             set.save();
             set
@@ -60,6 +64,11 @@ mod config {
         pub fn get_target(&self) -> Option<PublicKey> {
             self.target
         }
+
+        pub fn get_rcan(&self) -> Vec<u8> { 
+            self.rcan.clone().into_bytes()
+        }
+
     }
 }
 
@@ -92,15 +101,34 @@ async fn main() -> Result<()> {
 
     if let Some(target) = settings.get_target() {
         let secret_key = settings.secret();
+        let rcan = settings.get_rcan();
+
         let endpoint = Endpoint::builder(presets::N0)
             .secret_key(secret_key.clone())
             .bind()
             .await?;
 
-        let _f = endpoint.connect(target, b"liminal/auth/0").await?;
+        // fake connection
+        let mut exit = false;
+        let mut counter = 0;
+        const MAX: i32 = 5;
+        while !exit {
+            let f = endpoint.connect(target, b"liminal/auth/0").await?;
+            let (mut send , mut recv )  = f.open_bi().await?; 
 
+            // info!("{:?}",&rcan);
+
+            send.write(&rcan).await?;
+            send.finish()?;
+            time::sleep(Duration::from_secs(2)).await;
+            counter += 1;
+            info!("{}", counter);
+            if counter == MAX {
+                exit = true;
+            }
+        }
         endpoint.close().await;
-        tokio::signal::ctrl_c().await?;
+        // tokio::signal::ctrl_c().await?;
     }
 
     Ok(())

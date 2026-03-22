@@ -20,12 +20,12 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
 use crate::{cli::Args, config::Config};
+use crate::service;
 
 mod auth;
 mod quorum;
 mod signer;
 mod validator;
-mod service;
 
 
 use auth::Authenticator;
@@ -84,6 +84,12 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
         .accept(GOSSIP_APLN, gossip.clone())
         .spawn();
 
+    // if the service flag is set , create  the service node
+    if run_service {
+        warn!("Start  the external service");
+        tokio::spawn(service::run(config.clone()));
+    }
+
     // Gossip bits
     // TODO fix this topic
     let topic_id = TopicId::from_bytes([5; 32]);
@@ -132,12 +138,6 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
         ));
     }
 
-    // if the service flag is set , create  the service node
-    if run_service {
-        warn!("Start  the external service");
-        error!("not working yet.");
-        tokio::spawn(service::run(config.clone()));
-    }
     // Wait for exit.
     tokio::signal::ctrl_c().await?;
 

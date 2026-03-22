@@ -2,37 +2,39 @@
 // should have auth ( base on rcan )
 // and a signing irpc interface
 
-// has
-// Sign( BLOB )
-// Signature ( Signature )
-// Status
-// Errors from the signing machine
 mod auth;
+mod caps;
 mod irpc;
 
 use anyhow::Result;
-use iroh::{
-    Endpoint,
-    endpoint::presets,
-    protocol::{AcceptError, ProtocolHandler, RouterBuilder},
-};
-use serde::{Deserialize, Serialize};
+use iroh::{Endpoint, endpoint::presets, protocol::RouterBuilder};
 use tracing::info;
 
 use crate::config::Config;
-use irpc_iroh::{IrohLazyRemoteConnection, read_request};
 
 pub async fn run(config: Config) -> Result<()> {
+    let c = caps::Caps::issue();
+    info!("CAPABILITY => {:#?}", c);
+    info!("{}", c.as_text());
+
     info!("run the external service");
     let secret_key = config.get_service_key();
-    println!("service id {}",secret_key.public());
-    let (hook,proto) = auth::outgoing();
+    println!("service id {}", secret_key.public());
+
+    let (hook, proto) = auth::incoming();
 
     let endpoint = Endpoint::builder(presets::N0)
         .secret_key(secret_key.clone())
         .hooks(hook)
         .bind()
         .await?;
+
+    // make a rcan for testing
+    // let rc = c.make(secret_key,endpoint.id())?;
+    let enc = c.encoded(secret_key, endpoint.id())?;
+    info!("the rcan => {:}", enc);
+    // check the decode
+    info!("decoded = {:#?}",caps::Caps::decode(enc.into_bytes()));
 
     let _router = RouterBuilder::new(endpoint.clone())
         .accept(auth::ALPN, proto)

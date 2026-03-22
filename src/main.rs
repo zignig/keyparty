@@ -9,6 +9,8 @@ mod config;
 mod keygen;
 mod signing;
 mod ticket;
+mod service;
+
 
 use cli::{Args, Command};
 use config::Config;
