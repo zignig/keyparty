@@ -2,6 +2,7 @@
 
 use bytes::Bytes;
 use clap_derive::Parser;
+use iroh::PublicKey;
 
 #[derive(Parser, Clone, Debug)]
 pub struct Args {
@@ -28,4 +29,9 @@ pub enum Command {
         #[arg(long,short, default_value_t = false)]
         service: bool,
     },
+    Issue {
+        key: PublicKey,
+        #[arg(long,short, default_value_t = false)]
+        all: bool,
+    }
 }

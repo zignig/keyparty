@@ -91,7 +91,7 @@ impl Caps {
         let issuer = ed25519_dalek::SigningKey::from_bytes(&secret_key.to_bytes());
         let audience = target.as_verifying_key();
         let can = Rcan::issuing_builder(&issuer, audience, self.clone())
-            .sign(Expires::valid_for(Duration::from_hours(48)));
+            .sign(Expires::valid_for(Duration::from_secs(60)));
         Ok(can)
     }
 
@@ -103,9 +103,9 @@ impl Caps {
     }
 
     pub fn decode(input: Vec<u8>) -> Result<Rcan<Caps>> {
-        info!("decode");
+        // info!("decode");
         let decoded = data_encoding::BASE32_NOPAD.decode(&input)?;
-        info!("deserialize");
+        // info!("deserialize");
         let deser = Rcan::<Caps>::decode(&decoded)?;
         Ok(deser)
     }

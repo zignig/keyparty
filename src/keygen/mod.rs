@@ -37,7 +37,7 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
             (ticket.token.clone(), ticket.max_shares)
         }
-        Command::Sign { .. } => return Ok(()),
+        _ => return Ok(()),
     };
 
     // make the frosty server
@@ -72,7 +72,7 @@ pub async fn run(config: Config, args: Args) -> Result<()> {
             let ticket = FrostyTicket::deserialize(ticket.as_str()).expect("bad ticket");
             (FrostyClient::connect(endpoint.clone(), ticket.addr), ticket)
         }
-        Command::Sign { .. } => return Ok(()),
+        _ => return Ok(()),
     };
 
     // Kick off the process

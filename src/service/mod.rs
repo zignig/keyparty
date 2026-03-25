@@ -8,14 +8,15 @@ mod irpc;
 
 use anyhow::Result;
 use iroh::{Endpoint, endpoint::presets, protocol::RouterBuilder};
+use n0_error::AnyError;
 use tracing::info;
 
 use crate::config::Config;
 
 pub async fn run(config: Config) -> Result<()> {
-    let c = caps::Caps::issue();
-    info!("CAPABILITY => {:#?}", c);
-    info!("{}", c.as_text());
+    // let c = caps::Caps::issue();
+    // info!("CAPABILITY => {:#?}", c);
+    // info!("{}", c.as_text());
 
     info!("run the external service");
     let secret_key = config.get_service_key();
@@ -30,11 +31,11 @@ pub async fn run(config: Config) -> Result<()> {
         .await?;
 
     // make a rcan for testing
-    // let rc = c.make(secret_key,endpoint.id())?;
-    let enc = c.encoded(secret_key, endpoint.id())?;
-    info!("the rcan => {:}", enc);
-    // check the decode
-    info!("decoded = {:#?}",caps::Caps::decode(enc.into_bytes()));
+    
+    // let enc = c.encoded(secret_key, endpoint.id())?;
+    // info!("the rcan => {:}", enc);
+    // // check the decode
+    // info!("decoded = {:#?}",caps::Caps::decode(enc.into_bytes()));
 
     let _router = RouterBuilder::new(endpoint.clone())
         .accept(auth::ALPN, proto)
@@ -42,4 +43,19 @@ pub async fn run(config: Config) -> Result<()> {
     tokio::signal::ctrl_c().await?;
 
     Ok(())
+}
+
+pub fn issue(config: Config,args: super::cli::Args) -> Result<(),AnyError> {
+    info!("Issue a rcan blob");
+
+    match args.command {
+        crate::cli::Command::Issue { key, all } => {
+            let secret_key = config.get_service_key();
+            let cap = caps::Caps::issue();
+            let data = cap.encoded(secret_key, key)?;
+            println!("{}",data);
+            Ok(())
+        },
+        _ => Ok(())
+    }
 }

@@ -102,6 +102,7 @@ async fn main() -> Result<()> {
     if let Some(target) = settings.get_target() {
         let secret_key = settings.secret();
         let rcan = settings.get_rcan();
+        warn!("public key {}",secret_key.public());
 
         let endpoint = Endpoint::builder(presets::N0)
             .secret_key(secret_key.clone())
