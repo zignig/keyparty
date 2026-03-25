@@ -91,7 +91,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
     }
 
     // Gossip bits
-    // TODO fix this topic
+    // TODO fix this topic , this should be the public key.
     let topic_id = TopicId::from_bytes([5; 32]);
 
     for peer in peers.iter() {

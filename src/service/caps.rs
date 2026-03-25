@@ -91,7 +91,7 @@ impl Caps {
         let issuer = ed25519_dalek::SigningKey::from_bytes(&secret_key.to_bytes());
         let audience = target.as_verifying_key();
         let can = Rcan::issuing_builder(&issuer, audience, self.clone())
-            .sign(Expires::valid_for(Duration::from_secs(60)));
+            .sign(Expires::valid_for(Duration::from_mins(60 * 24 * 30)));
         Ok(can)
     }
 

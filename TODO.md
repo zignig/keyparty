@@ -1,3 +1,7 @@
+# Service
+
+1. turn auth into a local rpc
+
 # Next stuff
 
 1. hook up the validator
