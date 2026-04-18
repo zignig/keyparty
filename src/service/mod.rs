@@ -5,19 +5,17 @@
 mod auth;
 mod caps;
 mod irpc;
+mod ticket;
 
 use anyhow::Result;
 use iroh::{Endpoint, endpoint::presets, protocol::RouterBuilder};
+use iroh_tickets::Ticket;
 use n0_error::AnyError;
 use tracing::info;
 
-use crate::config::Config;
+use crate::{config::Config, service::ticket::ServiceTicket};
 
 pub async fn run(config: Config) -> Result<()> {
-    // let c = caps::Caps::issue();
-    // info!("CAPABILITY => {:#?}", c);
-    // info!("{}", c.as_text());
-
     info!("run the external service");
     let secret_key = config.get_service_key();
     println!("service id {}", secret_key.public());
@@ -30,13 +28,6 @@ pub async fn run(config: Config) -> Result<()> {
         .bind()
         .await?;
 
-    // make a rcan for testing
-    
-    // let enc = c.encoded(secret_key, endpoint.id())?;
-    // info!("the rcan => {:}", enc);
-    // // check the decode
-    // info!("decoded = {:#?}",caps::Caps::decode(enc.into_bytes()));
-
     let _router = RouterBuilder::new(endpoint.clone())
         .accept(auth::ALPN, proto)
         .spawn();
@@ -45,17 +36,22 @@ pub async fn run(config: Config) -> Result<()> {
     Ok(())
 }
 
-pub fn issue(config: Config,args: super::cli::Args) -> Result<(),AnyError> {
+pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
     info!("Issue a rcan blob");
 
     match args.command {
         crate::cli::Command::Issue { key, all } => {
             let secret_key = config.get_service_key();
             let cap = caps::Caps::issue();
-            let data = cap.encoded(secret_key, key)?;
-            println!("{}",data);
+            // let data = cap.encoded(secret_key, key)?;
+            let ticket = ServiceTicket::new(secret_key.clone().public(), cap);
+            let val = ticket.serialize();
+            println!("{}",&val);
+            let un = ServiceTicket::deserialize(val.as_str())?;
+            println!("{:?}",un);
+            // println!("{}", data);
             Ok(())
-        },
-        _ => Ok(())
+        }
+        _ => Ok(()),
     }
 }

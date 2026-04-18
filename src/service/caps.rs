@@ -52,7 +52,7 @@ impl Capability for Cap {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Caps {
     V0(CapSet<Cap>),
 }
