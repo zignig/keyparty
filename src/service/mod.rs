@@ -3,13 +3,15 @@
 // and a signing irpc interface
 
 mod auth;
-mod caps;
 mod irpc;
-mod ticket;
+
+pub mod caps;
+pub mod ticket;
 
 use anyhow::Result;
 use iroh::{Endpoint, endpoint::presets, protocol::RouterBuilder};
 use iroh_tickets::Ticket;
+
 use n0_error::AnyError;
 use tracing::info;
 
@@ -38,18 +40,19 @@ pub async fn run(config: Config) -> Result<()> {
 
 pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
     info!("Issue a rcan blob");
-
     match args.command {
         crate::cli::Command::Issue { key, all } => {
             let secret_key = config.get_service_key();
             let cap = caps::Caps::issue();
-            // let data = cap.encoded(secret_key, key)?;
             let ticket = ServiceTicket::new(secret_key.clone().public(), cap);
             let val = ticket.serialize();
-            println!("{}",&val);
-            let un = ServiceTicket::deserialize(val.as_str())?;
-            println!("{:?}",un);
-            // println!("{}", data);
+            println!("-------- ticket -------\n");
+            println!("  {}", &val);
+            println!("\n-----------------------");
+            if args.verbose > 0 {
+                let un = ServiceTicket::deserialize(val.as_str())?;
+                println!("{:?}", un);
+            }
             Ok(())
         }
         _ => Ok(()),

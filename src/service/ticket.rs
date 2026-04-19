@@ -6,13 +6,12 @@ use serde::{Deserialize, Serialize};
 use crate::service::caps::Caps;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-// #[display("{}", Ticket::serialize(self))]
 pub struct ServiceTicket {
     pub target: EndpointId,
-    pub rcan: Caps
+    pub rcan: Caps,
 }
 
-impl Ticket for ServiceTicket { 
+impl Ticket for ServiceTicket {
     const KIND: &'static str = "keyparty";
 
     fn to_bytes(&self) -> Vec<u8> {
@@ -25,11 +24,12 @@ impl Ticket for ServiceTicket {
     }
 }
 
-impl ServiceTicket { 
-    pub fn new(target: EndpointId,rcan: Caps) -> Self {
-        Self { 
-           target,
-           rcan 
+impl ServiceTicket {
+    pub fn new(target: EndpointId, origin: EndpointId, rcan: Caps) -> Self {
+        Self {
+            target,
+            rcan,
+            origin,
         }
     }
 }
