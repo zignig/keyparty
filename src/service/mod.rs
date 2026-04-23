@@ -9,10 +9,11 @@ pub mod caps;
 pub mod ticket;
 
 use anyhow::Result;
+use ed25519_dalek::VerifyingKey;
 use iroh::{Endpoint, endpoint::presets, protocol::RouterBuilder};
 use iroh_tickets::Ticket;
 
-use n0_error::AnyError;
+use n0_error::{AnyError, anyerr};
 use tracing::info;
 
 use crate::{config::Config, service::ticket::ServiceTicket};
@@ -43,17 +44,21 @@ pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
     match args.command {
         crate::cli::Command::Issue { key, all } => {
             let secret_key = config.get_service_key();
-            let cap = caps::Caps::issue();
-            let ticket = ServiceTicket::new(secret_key.clone().public(), cap);
-            let val = ticket.serialize();
-            println!("-------- ticket -------\n");
-            println!("  {}", &val);
-            println!("\n-----------------------");
-            if args.verbose > 0 {
-                let un = ServiceTicket::deserialize(val.as_str())?;
-                println!("{:?}", un);
+            if let Some(verify_key) = config.public_key() {
+                let cap = caps::Caps::issue();
+                let rc = cap.encoded(&secret_key,key)?;
+                let ticket = ServiceTicket::new(secret_key.clone().public(), verify_key, rc);
+                let val = ticket.serialize();
+                println!("-------- ticket -------\n");
+                println!("  {}", &val);
+                println!("\n-----------------------");
+                if args.verbose > 0 {
+                    let un = ServiceTicket::deserialize(val.as_str())?;
+                    println!("{:?}", un);
+                }
+                return Ok(());
             }
-            Ok(())
+            Err(anyerr!("missing verify key"))
         }
         _ => Ok(()),
     }

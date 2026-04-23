@@ -8,7 +8,7 @@ pub struct KeyClient {
 } 
 
 impl KeyClient { 
-    pub fn new(endpoint: Endpoint,target: EndpointId) -> Self { 
+    pub fn  new(endpoint: Endpoint,target: EndpointId) -> Self { 
         Self { 
             endpoint,
             target,

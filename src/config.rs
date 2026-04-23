@@ -1,7 +1,4 @@
-use frost_ed25519::{
-    VerifyingKey,
-    keys::{KeyPackage, PublicKeyPackage},
-};
+use frost_ed25519::{VerifyingKey, keys::{KeyPackage, PublicKeyPackage}};
 use iroh::{PublicKey, SecretKey};
 use n0_error::{AnyError, Result, anyerr};
 use serde::{Deserialize, Serialize};
@@ -115,7 +112,6 @@ impl Config {
         self.save();
     }
 
-    #[allow(dead_code)]
     pub fn public_key(&self) -> Option<VerifyingKey> {
         self.verify_key
     }
@@ -124,10 +120,10 @@ impl Config {
         self.secret.clone()
     }
 
-    pub fn get_service_key(&self) -> SecretKey { 
+    pub fn get_service_key(&self) -> SecretKey {
         self.service_key.clone()
     }
-    
+
     pub fn save_peers(&mut self, peers: Vec<PublicKey>) {
         self.peers = Some(peers);
         self.save();

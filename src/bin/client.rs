@@ -1,6 +1,7 @@
 // Basic example of a keyparty client
 
 use clap::Parser;
+use keyparty::KeyClient;
 use n0_error::Result;
 
 use tracing::{info, warn};
@@ -10,18 +11,18 @@ mod config {
 
     use iroh::{EndpointId, PublicKey, SecretKey};
 
-    use iroh_tickets::Ticket;
     use keyparty::{Caps, ServiceTicket};
-    use n0_error::{AnyError, Result};
+    use n0_error::{AnyError, Result, anyerr};
 
+    use rcan::Rcan;
     use serde::{Deserialize, Serialize};
-    use tracing::info;
+    use tracing::{error, info};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Settings {
         secret: SecretKey,
         target: Option<EndpointId>,
-        rcan: Option<Caps>,
+        rcan: Option<String>,
         #[serde(skip)]
         config_path: PathBuf,
     }
@@ -31,7 +32,9 @@ mod config {
             let config = match std::fs::read_to_string(&config_path) {
                 Ok(content) => {
                     let content = content.as_str();
-                    let config: Settings = toml::from_str(&content).expect("config broken");
+                    let mut config: Settings = toml::from_str(&content).expect("config broken");
+                    // set my own config path
+                    config.config_path = config_path;
                     config
                 }
                 Err(_e) => Settings::new(config_path),
@@ -40,6 +43,7 @@ mod config {
         }
 
         pub fn save(&self) {
+            error!("{:#?}",self);
             let contents = toml::to_string(&self).expect("borked config");
             std::fs::write(self.config_path.clone(), contents).expect("borked file");
         }
@@ -56,11 +60,12 @@ mod config {
             set
         }
 
-        pub fn set_ticket(&mut self, ticket: String) -> Result<()> {
+        pub fn set_ticket(&mut self, ticket: ServiceTicket) -> Result<()> {
             info!("Save a new ticket");
-            println!("{}", ticket);
-            let  service_ticket: ServiceTicket = ServiceTicket::deserialize(ticket.as_str())?;
-            
+            println!("{:#?}", ticket);    
+            self.target = Some(ticket.target);
+            self.rcan = Some(ticket.rcan);
+            self.save();
             Ok(())
         }
 
@@ -76,8 +81,13 @@ mod config {
             self.target.clone()
         }
 
-        pub fn get_rcan(&self) -> Option<Caps> {
-            self.rcan.clone()
+        pub fn get_rcan(&self) -> Result<Rcan<Caps>> {
+            if let Some(caps_string) = self.rcan.clone() { 
+                let rc = Caps::decode(caps_string.into_bytes())?;
+                return Ok(rc);
+            } else { 
+                return Err(anyerr!("failed rcan decode"));
+            }
         }
     }
 }
@@ -86,6 +96,7 @@ mod config {
 // Command line interface
 mod cli {
     use clap_derive::Parser;
+    use keyparty::ServiceTicket;
     use std::path::PathBuf;
 
     #[derive(Parser, Clone, Debug)]
@@ -93,7 +104,7 @@ mod cli {
         #[arg(short, long, default_value = "client.toml")]
         pub config: PathBuf,
         #[arg(long)]
-        pub ticket: Option<String>,
+        pub ticket: Option<ServiceTicket>,
     }
 }
 
@@ -125,6 +136,8 @@ async fn main() -> Result<()> {
     } else {
         println!("No target , need a ticket issued to work.")
     }
+
+    // Connect, auth and sign
 
     // let _client = KeyClient::new();
     Ok(())

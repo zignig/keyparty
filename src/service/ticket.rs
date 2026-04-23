@@ -1,6 +1,10 @@
-use iroh_tickets::Ticket;
+use std::str::FromStr;
+
+use frost_ed25519::VerifyingKey;
+use iroh_tickets::{ParseError, Ticket};
 
 use iroh_base::EndpointId;
+use rcan::Rcan;
 use serde::{Deserialize, Serialize};
 
 use crate::service::caps::Caps;
@@ -8,7 +12,9 @@ use crate::service::caps::Caps;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServiceTicket {
     pub target: EndpointId,
-    pub rcan: Caps,
+    pub origin: VerifyingKey,
+    pub rcan: String,
+
 }
 
 impl Ticket for ServiceTicket {
@@ -24,12 +30,20 @@ impl Ticket for ServiceTicket {
     }
 }
 
+impl FromStr for ServiceTicket {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ticket::deserialize(s)
+    }
+}
+
 impl ServiceTicket {
-    pub fn new(target: EndpointId, origin: EndpointId, rcan: Caps) -> Self {
+    pub fn new(target: EndpointId, origin: VerifyingKey, rcan: String) -> Self {
         Self {
             target,
-            rcan,
             origin,
+            rcan,
         }
     }
 }

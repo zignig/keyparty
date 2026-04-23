@@ -6,7 +6,7 @@
 // TODO rewrite rcan.
 
 use anyhow::Result;
-use ed25519_dalek::pkcs8::spki::der::pem::decode;
+// use ed25519_dalek::pkcs8::spki::der::pem::decode;
 use iroh::{EndpointId, PublicKey, SecretKey};
 use rcan::{Capability, Expires, Rcan};
 use serde::{Deserialize, Serialize};
@@ -87,7 +87,7 @@ impl Caps {
         toml::to_string(self).unwrap()
     }
 
-    pub fn make(&self, secret_key: SecretKey, target: EndpointId) -> Result<Rcan<Caps>> {
+    pub fn make(&self, secret_key: &SecretKey, target: EndpointId) -> Result<Rcan<Caps>> {
         let issuer = ed25519_dalek::SigningKey::from_bytes(&secret_key.to_bytes());
         let audience = target.as_verifying_key();
         let can = Rcan::issuing_builder(&issuer, audience, self.clone())
@@ -95,7 +95,7 @@ impl Caps {
         Ok(can)
     }
 
-    pub fn encoded(&self, secret_key: SecretKey, target: EndpointId) -> Result<String> {
+    pub fn encoded(&self, secret_key: &SecretKey, target: EndpointId) -> Result<String> {
         let rc = self.make(secret_key, target)?;
         let ser = rc.encode();
         let encoded = data_encoding::BASE32_NOPAD.encode(&ser);
