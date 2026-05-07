@@ -9,13 +9,13 @@ pub mod caps;
 pub mod ticket;
 
 use anyhow::Result;
-use ed25519_dalek::VerifyingKey;
 use iroh::{Endpoint, endpoint::presets, protocol::RouterBuilder};
 use iroh_tickets::Ticket;
 
 use n0_error::{AnyError, anyerr};
 use tracing::info;
 
+pub use auth::ALPN as AUTH_ALPN;
 use crate::{config::Config, service::ticket::ServiceTicket};
 
 pub async fn run(config: Config) -> Result<()> {
@@ -43,8 +43,10 @@ pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
     info!("Issue a rcan blob");
     match args.command {
         crate::cli::Command::Issue { key, all } => {
+            info!("issue an new ticket!!");
             let secret_key = config.get_service_key();
             if let Some(verify_key) = config.public_key() {
+                info!("issue rcan");
                 let cap = caps::Caps::issue();
                 let rc = cap.encoded(&secret_key,key)?;
                 let ticket = ServiceTicket::new(secret_key.clone().public(), verify_key, rc);
@@ -52,6 +54,7 @@ pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
                 println!("-------- ticket -------\n");
                 println!("  {}", &val);
                 println!("\n-----------------------");
+                info!("{}",&val);
                 if args.verbose > 0 {
                     let un = ServiceTicket::deserialize(val.as_str())?;
                     println!("{:?}", un);

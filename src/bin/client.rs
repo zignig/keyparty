@@ -1,20 +1,18 @@
 // Basic example of a keyparty client
 
 use clap::Parser;
+use iroh::{Endpoint, endpoint::presets};
 use keyparty::KeyClient;
 use n0_error::Result;
-
 use tracing::{info, warn};
 
 mod config {
     use std::path::PathBuf;
-
     use iroh::{EndpointId, PublicKey, SecretKey};
 
-    use keyparty::{Caps, ServiceTicket};
-    use n0_error::{AnyError, Result, anyerr};
+    use keyparty::ServiceTicket;
+    use n0_error::{AnyError, Result};
 
-    use rcan::Rcan;
     use serde::{Deserialize, Serialize};
     use tracing::{error, info};
 
@@ -43,7 +41,7 @@ mod config {
         }
 
         pub fn save(&self) {
-            error!("{:#?}",self);
+            error!("{:#?}", self);
             let contents = toml::to_string(&self).expect("borked config");
             std::fs::write(self.config_path.clone(), contents).expect("borked file");
         }
@@ -62,7 +60,7 @@ mod config {
 
         pub fn set_ticket(&mut self, ticket: ServiceTicket) -> Result<()> {
             info!("Save a new ticket");
-            println!("{:#?}", ticket);    
+            println!("{:#?}", ticket);
             self.target = Some(ticket.target);
             self.rcan = Some(ticket.rcan);
             self.save();
@@ -81,17 +79,17 @@ mod config {
             self.target.clone()
         }
 
-        pub fn get_rcan(&self) -> Result<Rcan<Caps>> {
-            if let Some(caps_string) = self.rcan.clone() { 
-                let rc = Caps::decode(caps_string.into_bytes())?;
-                return Ok(rc);
-            } else { 
-                return Err(anyerr!("failed rcan decode"));
-            }
+        pub fn get_rcan(&self) -> Option<String> {
+            // if let Some(caps_string) = self.rcan.clone() {
+            //     let rc = Caps::decode(caps_string.into_bytes())?;
+            //     return Ok(rc);
+            // } else {
+            //     return Err(anyerr!("failed rcan decode"));
+            // }
+            self.rcan.clone()
         }
     }
 }
-
 
 // Command line interface
 mod cli {
@@ -108,8 +106,7 @@ mod cli {
     }
 }
 
-
-// The client test 
+// The client test
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -119,26 +116,37 @@ async fn main() -> Result<()> {
     warn!("{:#?}", args);
 
     // Settings
-    let mut settings = config::Settings::load(args.config)?;
-    warn!("{:#?}", settings);
+    let mut config = config::Settings::load(args.config)?;
+    warn!("{:#?}", config);
 
     // Show my public key
-    println!("{:?}", settings.public());
+    println!("{:?}", config.public());
 
     // is there a new ticket on the command line ?
     if let Some(ticket) = args.ticket {
-        settings.set_ticket(ticket)?;
+        config.set_ticket(ticket)?;
     }
 
     // Create the client...
-    if let Some(target) = settings.get_target() {
-        info!("create an endpoint and connect to {}", target);
+    if let Some(target) = config.get_target() {
+        info!("create an endpoint and connect to {}", target.fmt_short());
+        // Connect, auth and sign
+        let secret_key = config.secret();
+        if let Some(rcan) = config.get_rcan() {
+            let endpoint = Endpoint::builder(presets::N0)
+                .secret_key(secret_key.clone())
+                .bind()
+                .await?;
+            let _ = endpoint.online().await;
+            // create the key client
+
+            let mut client = KeyClient::new(endpoint, target, rcan);
+            let val = client.auth().await;
+            println!("{:?}", val);
+        }
     } else {
         println!("No target , need a ticket issued to work.")
     }
 
-    // Connect, auth and sign
-
-    // let _client = KeyClient::new();
     Ok(())
 }
