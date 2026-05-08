@@ -5,10 +5,12 @@ use iroh::{Endpoint, endpoint::presets};
 use keyparty::KeyClient;
 use n0_error::Result;
 use tracing::{info, warn};
+use tracing_subscriber::filter::{LevelFilter, Targets};
+use tracing_subscriber::prelude::*;
 
 mod config {
-    use std::path::PathBuf;
     use iroh::{EndpointId, PublicKey, SecretKey};
+    use std::path::PathBuf;
 
     use keyparty::ServiceTicket;
     use n0_error::{AnyError, Result};
@@ -109,7 +111,12 @@ mod cli {
 // The client test
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    let mut filter = Targets::new();
+    filter = filter.with_target("client", LevelFilter::INFO);
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
+        .init();
 
     // Cli
     let args = cli::Args::parse();
@@ -140,9 +147,10 @@ async fn main() -> Result<()> {
             let _ = endpoint.online().await;
             // create the key client
 
-            let mut client = KeyClient::new(endpoint, target, rcan);
+            let client = KeyClient::new(endpoint.clone(), target, rcan);
             let val = client.auth().await;
             println!("{:?}", val);
+            endpoint.close().await;
         }
     } else {
         println!("No target , need a ticket issued to work.")

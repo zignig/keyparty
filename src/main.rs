@@ -10,11 +10,13 @@ mod keygen;
 mod signing;
 mod ticket;
 mod service;
+mod id_store;
+
 
 
 use cli::{Args, Command};
 use config::Config;
-
+use id_store::IdentityApi;
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::prelude::*;
 

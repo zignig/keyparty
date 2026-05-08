@@ -3,12 +3,14 @@
 pub const ALPN: &[u8] = b"liminal/auth/0";
 
 use crate::{
+    id_store::IdClient,
     service::caps::{self, Caps},
-    signing::now,
 };
 use iroh::{
     EndpointAddr, PublicKey,
-    endpoint::{AfterHandshakeOutcome, BeforeConnectOutcome, Connection, ConnectionInfo, EndpointHooks},
+    endpoint::{
+        AfterHandshakeOutcome, BeforeConnectOutcome, Connection, ConnectionInfo, EndpointHooks,
+    },
     protocol::{AcceptError, ProtocolHandler},
 };
 use n0_error::{AnyError, anyerr};
@@ -16,18 +18,20 @@ use rcan::Rcan;
 use std::{str, time::SystemTime};
 use tracing::{error, info, warn};
 
-pub fn incoming() -> (RCanAuth, AuthProtocol) {
-    let rca = RCanAuth::new();
-    let ap = AuthProtocol::new();
+pub fn incoming(id_client: IdClient) -> (RCanAuth, AuthProtocol) {
+    let rca = RCanAuth::new(id_client.clone());
+    let ap = AuthProtocol::new(id_client);
     (rca, ap)
 }
 
 #[derive(Debug)]
-pub struct RCanAuth;
+pub struct RCanAuth {
+    client: IdClient,
+}
 
 impl RCanAuth {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(client: IdClient) -> Self {
+        Self { client }
     }
 }
 
@@ -56,11 +60,13 @@ impl EndpointHooks for RCanAuth {
 }
 
 #[derive(Debug)]
-pub struct AuthProtocol;
+pub struct AuthProtocol {
+    client: IdClient,
+}
 
 impl AuthProtocol {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(client: IdClient) -> Self {
+        Self { client }
     }
 }
 
@@ -79,9 +85,12 @@ impl ProtocolHandler for AuthProtocol {
         match decode {
             Ok(d) => {
                 info!("{:#?}", &d);
-                match check_rcan(d,&connection) {
-                    Ok(_) => info!("the rcan works"),
-                    Err(e) => error!("rcan fail {}",e),
+                match check_rcan(d, &connection) {
+                    Ok(_) =>{
+                        info!("the rcan works");
+                        self.client.new_fren(connection.remote_id()).await;
+                    },
+                    Err(e) => error!("rcan fail {}", e),
                 }
             }
             Err(e) => info!("{:#?}", e),
@@ -92,7 +101,7 @@ impl ProtocolHandler for AuthProtocol {
     }
 }
 
-fn check_rcan(rcan: Rcan<Caps>,conn: &Connection) -> Result<(), AnyError> {
+fn check_rcan(rcan: Rcan<Caps>, conn: &Connection) -> Result<(), AnyError> {
     let time = SystemTime::now();
     if rcan.expires().is_valid_at(time) {
         info!("still valid");

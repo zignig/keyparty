@@ -27,7 +27,6 @@ impl KeyClient {
         let buf = self.rcan.as_bytes();
         send.write(&buf).await?;
         send.finish()?;
-        println!("{:?}",conn);
         Ok(true)
     }
 }

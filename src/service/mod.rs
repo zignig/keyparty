@@ -15,15 +15,15 @@ use iroh_tickets::Ticket;
 use n0_error::{AnyError, anyerr};
 use tracing::info;
 
+use crate::{config::Config, id_store::IdClient, service::ticket::ServiceTicket};
 pub use auth::ALPN as AUTH_ALPN;
-use crate::{config::Config, service::ticket::ServiceTicket};
 
-pub async fn run(config: Config) -> Result<()> {
+pub async fn run(config: Config, id_client: IdClient) -> Result<()> {
     info!("run the external service");
     let secret_key = config.get_service_key();
     println!("service id {}", secret_key.public());
 
-    let (hook, proto) = auth::incoming();
+    let (hook, proto) = auth::incoming(id_client);
 
     let endpoint = Endpoint::builder(presets::N0)
         .secret_key(secret_key.clone())
@@ -48,13 +48,13 @@ pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
             if let Some(verify_key) = config.public_key() {
                 info!("issue rcan");
                 let cap = caps::Caps::issue();
-                let rc = cap.encoded(&secret_key,key)?;
+                let rc = cap.encoded(&secret_key, key)?;
                 let ticket = ServiceTicket::new(secret_key.clone().public(), verify_key, rc);
                 let val = ticket.serialize();
                 println!("-------- ticket -------\n");
                 println!("  {}", &val);
                 println!("\n-----------------------");
-                info!("{}",&val);
+                info!("{}", &val);
                 if args.verbose > 0 {
                     let un = ServiceTicket::deserialize(val.as_str())?;
                     println!("{:?}", un);

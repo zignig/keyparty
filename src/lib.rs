@@ -10,7 +10,10 @@ mod service;
 mod signing;
 mod config;
 mod cli;
+mod id_store;
+
 
 pub use client::KeyClient;
 pub use service::ticket::ServiceTicket;
 pub use service::caps::Caps;
+pub use id_store::{IdentityApi,IdClient};
