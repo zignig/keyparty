@@ -10,20 +10,25 @@
 
 # Outstanding stuff 
 
+1. rcan auth is working, it's only one layer deep , but seems to be working
+1. **add** defence againt the dark arts.
+
 ## Some todo stuff 
 
 1. harden endpoints and process to make it hard to cheat.
 1. add finished event to drop the key gen structs.
 1. make the config file based on token name.
 1. integrate rcan construction
-    1. use as a rcan anchor , and sign subkeys
+    1. use as a rcan anchor , and sign subkeys # partial
     1. distribute rcan chains
 
 ## Signing
 
-- itegrate chat ? 
+- itegrate chat ?  # no
 - show/process message and ask Y/N from the endpoint before signing
+    - itegrate into validator
 - deal with large messages (4Kb on gossip messages) , ?integrate blob distribution.
+    - not yet
 - check that there is quorum (min shares) before proceeding
     - this needs to be be a better system , separate timed task.
 
@@ -32,7 +37,9 @@
 Maintaining quorm is harder than it looks.
 
 1. send quorum and lost_quorum to the gossip channel.
+    1. extract the gossip into it's own module and add state
 1. need to use hello messages to watch for node changes.
+    1. gossip does this for us
 1. add quorum messages , gained / lost through the gossip channel.
 
 ### Layout
@@ -40,14 +47,18 @@ Maintaining quorm is harder than it looks.
 [https://frost.zfnd.org/tutorial/signing.html](https://frost.zfnd.org/tutorial/signing.html) 
 
 - local irpc client for signing works
+    - ongoing
 - gossip channel to communnicate
+    - working
 - messages
     - hello
     - start signing , with UUID transaction id
+        - using 64 bit time stamp , perhaps the has of it.
     - round1 , make claim
     - round2 , collect
     - collect and sign
     - compare sigs and save
+        - this needs more thought
 
 # Done
 

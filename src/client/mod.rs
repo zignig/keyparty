@@ -29,19 +29,22 @@ impl KeyClient {
         debug!("auth incoming");
         let (mut send, mut recv) = conn.open_bi().await?;
 
+        // send the rcan up
         let buf = self.rcan.clone().into_bytes();
 
+        // write 
         let sent = send.write(&buf).await?;
         info!("send {} bytes", sent);
         send.finish()?;
 
+        // get the response
         let msg = recv.read_to_end(10).await?;
         warn!("reply message {:?}", msg);
         if msg.len() == 1 {
+            debug!("client is authenticated");
             self.authed = true;
             return Ok(msg[0]);
         }
-        info!("finished writing");
         conn.close(1u8.into(), b"finished");
         Ok(0)
     }

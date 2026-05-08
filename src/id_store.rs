@@ -1,12 +1,16 @@
-// A redb backed actor to handle Endpoint ids
+// A cache of the rcan authenticated endpoints.
 
 use std::collections::BTreeMap;
 
 use iroh::EndpointId;
 use irpc::{Client, WithChannels, channel::oneshot, rpc_requests};
+use rcan::Rcan;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 use tracing::{info, warn};
+
+use crate::service::caps::Caps;
+
 
 // Stored endpoint data
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,24 +25,24 @@ pub enum Status {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fren {
-    name: String,
     id: EndpointId,
     status: Status,
     created: i64,
+    rcan: Option<Rcan<Caps>>
 }
 
 impl Fren {
     fn new(id: EndpointId) -> Self {
         Self {
-            name: "_".to_string(),
             id: id,
             status: Status::Seen,
-            created: chrono::Utc::now().timestamp_nanos_opt().expect("time does not exist")
+            created: chrono::Utc::now().timestamp_nanos_opt().expect("time does not exist"),
+            rcan: None
         }
     }
 }
 
-// Irpc
+// Irpc constructs
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Get {
