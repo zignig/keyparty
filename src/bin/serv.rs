@@ -22,7 +22,7 @@ mod config {
     }
 
     impl Settings {
-        pub const FILE_NAME: &str = "settings.toml";
+        pub const FILE_NAME: &str = "client.toml";
 
         pub fn load() -> Result<Settings, AnyError> {
             let config = match std::fs::read_to_string(Settings::FILE_NAME) {

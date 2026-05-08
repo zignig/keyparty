@@ -4,7 +4,7 @@ use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::KeyClient;
 use n0_error::Result;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::prelude::*;
 
@@ -111,12 +111,13 @@ mod cli {
 // The client test
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut filter = Targets::new();
-    filter = filter.with_target("client", LevelFilter::INFO);
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(filter)
-        .init();
+    // let mut filter = Targets::new();
+    // filter = filter.with_target("client", LevelFilter::DEBUG);
+    // tracing_subscriber::registry()
+    //     .with(tracing_subscriber::fmt::layer())
+    //     .with(filter)
+    //     .init();
+    tracing_subscriber::fmt::init();
 
     // Cli
     let args = cli::Args::parse();
@@ -136,7 +137,6 @@ async fn main() -> Result<()> {
 
     // Create the client...
     if let Some(target) = config.get_target() {
-        info!("create an endpoint and connect to {}", target.fmt_short());
         // Connect, auth and sign
         let secret_key = config.secret();
         if let Some(rcan) = config.get_rcan() {
@@ -144,13 +144,19 @@ async fn main() -> Result<()> {
                 .secret_key(secret_key.clone())
                 .bind()
                 .await?;
-            let _ = endpoint.online().await;
+            // let _ = endpoint.online().await;
             // create the key client
-
+            info!("create an endpoint and connect to {}", target.fmt_short());
             let client = KeyClient::new(endpoint.clone(), target, rcan);
-            let val = client.auth().await;
+            warn!("send auth");
+            let val = match client.login().await {
+                Ok(o) => warn!("auth returned {:?}", o),
+                Err(e) => error!("{:?}", e),
+            };
             println!("{:?}", val);
             endpoint.close().await;
+        } else {
+            info!("no rcan");
         }
     } else {
         println!("No target , need a ticket issued to work.")

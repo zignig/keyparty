@@ -149,7 +149,7 @@ impl IdClient {
     pub async fn new_fren(&self, key: EndpointId) {
         match self.inner.rpc(Get { key }).await.unwrap() {
             Some(fren) => { 
-                warn!("Fren {:#?}",fren);
+                warn!("existing fren => {:#?}",fren);
                 return
             },
             None => {

@@ -76,9 +76,10 @@ impl ProtocolHandler for AuthProtocol {
             "auth connection from {:}",
             connection.remote_id().fmt_short()
         );
+        warn!("open bidirectional connection");
         let (mut send, mut recv) = connection.accept_bi().await?;
         let rcan_bytes = recv.read_to_end(254).await.map_err(AcceptError::from_err)?;
-        // info!("{:?}",rcan_bytes);
+        // info!(" read rcan bytes{:?}",rcan_bytes);
         // decode checks the signature of the rcan.
         // so we know its good.
         let decode = caps::Caps::decode(rcan_bytes);
@@ -86,14 +87,21 @@ impl ProtocolHandler for AuthProtocol {
             Ok(d) => {
                 info!("{:#?}", &d);
                 match check_rcan(d, &connection) {
-                    Ok(_) =>{
+                    Ok(_) => {
                         info!("the rcan works");
                         self.client.new_fren(connection.remote_id()).await;
-                    },
-                    Err(e) => error!("rcan fail {}", e),
+                        send.write(&[1]).await.unwrap();
+                    }
+                    Err(e) => {
+                        send.write(&[0]).await.unwrap();
+                        error!("rcan fail {}", e);
+                    }
                 }
             }
-            Err(e) => info!("{:#?}", e),
+            Err(e) => {
+                send.write(&[0]).await.unwrap();
+                info!("{:#?}", e);
+            }
         }
         send.finish()?;
         connection.closed().await;
