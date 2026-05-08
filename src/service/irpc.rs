@@ -1,5 +1,7 @@
 // IRPC interface
 
+pub const ALPN: &[u8] = b"keyparty/service/0";
+
 use iroh::protocol::{AcceptError, ProtocolHandler};
 use serde::{Deserialize, Serialize};
 

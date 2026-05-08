@@ -1,9 +1,11 @@
 // Basic example of a keyparty client
 
+use std::any;
+
 use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::KeyClient;
-use n0_error::Result;
+use n0_error::{Result, anyerr};
 use tracing::{error, info, warn};
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::prelude::*;
@@ -149,11 +151,27 @@ async fn main() -> Result<()> {
             info!("create an endpoint and connect to {}", target.fmt_short());
             let client = KeyClient::new(endpoint.clone(), target, rcan);
             warn!("send auth");
-            let val = match client.login().await {
-                Ok(o) => warn!("auth returned {:?}", o),
-                Err(e) => error!("{:?}", e),
-            };
-            println!("{:?}", val);
+            let mut exit = false;
+            let mut count = 0;
+            const MAX_COUNT: i32 = 5;
+            while !exit {
+                let val = match client.login().await {
+                   Ok(val )  => {
+                        warn!("auth returned {:?}", val);
+                        exit = true;
+                        val
+                    }
+                    Err(e) => {
+                        error!("conn fail !! {:?} - {:?}", e, count);
+                        count += 1;
+                        if count == MAX_COUNT {
+                            return Err(anyerr!("connection failed"));
+                        }
+                        0
+                    }
+                };
+                println!("{:?}", val);
+            }
             endpoint.close().await;
         } else {
             info!("no rcan");

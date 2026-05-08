@@ -16,7 +16,7 @@ use iroh::{
 use n0_error::{AnyError, anyerr};
 use rcan::Rcan;
 use std::{str, time::SystemTime};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub fn incoming(id_client: IdClient) -> (RCanAuth, AuthProtocol) {
     let rca = RCanAuth::new(id_client.clone());
@@ -55,7 +55,24 @@ impl EndpointHooks for RCanAuth {
             side,
             str::from_utf8(&alpn).unwrap()
         );
-        AfterHandshakeOutcome::Accept
+
+        if alpn == ALPN {
+            info!("auth request , allow from anywhere");
+            return AfterHandshakeOutcome::Accept;
+        }
+        match self.client.get(id).await.unwrap() {
+            Some(fren) => {
+                info!("A fren !!!  {:#?}", fren);
+                return AfterHandshakeOutcome::Accept;
+            }
+            None => {
+                error!("no fren of mine");
+                return AfterHandshakeOutcome::Reject {
+                    error_code: 55u32.into(),
+                    reason: b"unauthenticated".to_vec(),
+                };
+            }
+        }
     }
 }
 
@@ -85,7 +102,7 @@ impl ProtocolHandler for AuthProtocol {
         let decode = caps::Caps::decode(rcan_bytes);
         match decode {
             Ok(d) => {
-                info!("{:#?}", &d);
+                debug!("{:#?}", &d);
                 match check_rcan(d, &connection) {
                     Ok(_) => {
                         info!("the rcan works");
@@ -104,6 +121,7 @@ impl ProtocolHandler for AuthProtocol {
             }
         }
         send.finish()?;
+
         connection.closed().await;
         Ok(())
     }

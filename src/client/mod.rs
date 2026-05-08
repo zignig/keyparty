@@ -25,9 +25,11 @@ impl KeyClient {
         }
     }
 
-    pub async fn login(&self) -> Result<()> {
+    pub async fn login(&self) -> Result<u8> {
         info!("endpoint auth send {}", self.target.fmt_short());
         let conn = self.endpoint.connect(self.target, AUTH_ALPN).await?;
+
+        info!("connected");
         let (mut send, mut recv) = conn.open_bi().await?;
 
         let buf = self.rcan.clone().into_bytes();
@@ -37,9 +39,12 @@ impl KeyClient {
         send.finish()?;
 
         let msg = recv.read_to_end(10).await?;
-        warn!("reply message {:?}",msg);
-        
+        warn!("reply message {:?}", msg);
+        if msg.len() == 1 {
+            return Ok(msg[0]);
+        }
         info!("finished writing");
-        Ok(())
+        conn.close(1u8.into(), b"finished");
+        Ok(0)
     }
 }
