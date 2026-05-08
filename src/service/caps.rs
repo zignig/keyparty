@@ -98,14 +98,14 @@ impl Caps {
     pub fn encoded(&self, secret_key: &SecretKey, target: EndpointId) -> Result<String> {
         let rc = self.make(secret_key, target)?;
         let ser = rc.encode();
-        let encoded = data_encoding::BASE32_NOPAD.encode(&ser);
+        let mut encoded = data_encoding::BASE32_NOPAD.encode(&ser);
+        encoded = encoded.to_lowercase();
         Ok(encoded)
     }
 
     pub fn decode(input: Vec<u8>) -> Result<Rcan<Caps>> {
-        // info!("decode");
-        let decoded = data_encoding::BASE32_NOPAD.decode(&input)?;
-        // info!("deserialize");
+        let upper = input.to_ascii_uppercase();
+        let decoded = data_encoding::BASE32_NOPAD.decode(&upper)?;
         let deser = Rcan::<Caps>::decode(&decoded)?;
         Ok(deser)
     }

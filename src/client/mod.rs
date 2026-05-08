@@ -1,18 +1,15 @@
 // Client tools for connecting to the keyparty service
 
-use std::time::Duration;
-
 use crate::service::AUTH_ALPN;
 use anyhow::Result;
 use iroh::{Endpoint, EndpointId};
-use tokio::time;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 pub struct KeyClient {
     endpoint: Endpoint,
     target: EndpointId,
     rcan: String,
-    // authed: bool,
+    authed: bool,
 }
 
 impl KeyClient {
@@ -21,15 +18,15 @@ impl KeyClient {
             endpoint,
             target,
             rcan,
-            // authed: false,
+            authed: false,
         }
     }
 
-    pub async fn login(&self) -> Result<u8> {
-        info!("endpoint auth send {}", self.target.fmt_short());
+    pub async fn login(&mut self) -> Result<u8> {
+        debug!("endpoint auth send {}", self.target.fmt_short());
         let conn = self.endpoint.connect(self.target, AUTH_ALPN).await?;
 
-        info!("connected");
+        debug!("auth incoming");
         let (mut send, mut recv) = conn.open_bi().await?;
 
         let buf = self.rcan.clone().into_bytes();
@@ -41,6 +38,7 @@ impl KeyClient {
         let msg = recv.read_to_end(10).await?;
         warn!("reply message {:?}", msg);
         if msg.len() == 1 {
+            self.authed = true;
             return Ok(msg[0]);
         }
         info!("finished writing");

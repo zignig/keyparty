@@ -6,9 +6,9 @@ use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::KeyClient;
 use n0_error::{Result, anyerr};
-use tracing::{error, info, warn};
-use tracing_subscriber::filter::{LevelFilter, Targets};
-use tracing_subscriber::prelude::*;
+use tracing::{debug, error, info, warn};
+// use tracing_subscriber::filter::{LevelFilter, Targets};
+// use tracing_subscriber::prelude::*;
 
 mod config {
     use iroh::{EndpointId, PublicKey, SecretKey};
@@ -123,11 +123,11 @@ async fn main() -> Result<()> {
 
     // Cli
     let args = cli::Args::parse();
-    warn!("{:#?}", args);
+    debug!("{:#?}", args);
 
     // Settings
     let mut config = config::Settings::load(args.config)?;
-    warn!("{:#?}", config);
+    debug!("{:#?}", config);
 
     // Show my public key
     println!("{:?}", config.public());
@@ -149,7 +149,7 @@ async fn main() -> Result<()> {
             // let _ = endpoint.online().await;
             // create the key client
             info!("create an endpoint and connect to {}", target.fmt_short());
-            let client = KeyClient::new(endpoint.clone(), target, rcan);
+            let mut client = KeyClient::new(endpoint.clone(), target, rcan);
             warn!("send auth");
             let mut exit = false;
             let mut count = 0;
