@@ -233,7 +233,7 @@ pub async fn runner(
 
             // Messges from the service
             Some(service_message) = service_in.recv() => {
-                error!(" in gossip => {:#?}",service_message);
+                error!(" in gossip => {}",service_message.message());
                 // let mess = service_message.message();
                 let mess = "woo hoo it seems to work".to_string();
                 // let r = service_message.reply;
@@ -242,6 +242,7 @@ pub async fn runner(
                 service_message.reply(mess).await;
             }
 
+            // Cancel token to  bug out.
             _ = cancel_token.cancelled() =>  { 
                 info!("Stop the main runner");
                 return Ok(());

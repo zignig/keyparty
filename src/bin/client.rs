@@ -149,11 +149,23 @@ async fn main() -> Result<()> {
             info!("create an endpoint and connect to {}", target.fmt_short());
             let mut client = KeyClient::new(endpoint.clone(), target, rcan);
             warn!("send auth");
-            let val = client.login().await?;
+            let mut exit = false;
+            let mut counter = 0;
+            const MAX_FAIL: i32 = 5;
+            while !exit {
+                match client.login().await {
+                    Ok(_) => exit = true,
+                    Err(e) => {
+                        counter += 1;
+                        if counter == MAX_FAIL {
+                            error!("{:#?} - {} ", e, counter);
+                            return Ok(());
+                        }
+                    }
+                };
+            };
+
             let signer = client.signer().await;
-            if val == 1 {
-                info!("login succesful");
-            }
 
             let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
             std::thread::spawn(move || input_loop(line_tx));
@@ -164,7 +176,7 @@ async fn main() -> Result<()> {
                 let text = text.trim();
                 if text != "" {
                     let reply = signer.sign(&text).await?;
-                    info!("data back from the remote signer {:#?}",reply);
+                    info!("data back from the remote signer {:#?}", reply);
                 }
             }
 
