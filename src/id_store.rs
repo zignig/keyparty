@@ -166,14 +166,15 @@ impl IdClient {
         self.inner.rpc(Get { key }).await
     }
 
-    pub async fn new_fren(&self, key: EndpointId) {
+    pub async fn new_fren(&self, key: EndpointId,rcan: Rcan<Caps>) {
         match self.inner.rpc(Get { key }).await.unwrap() {
             Some(fren) => {
                 warn!("existing fren => {:#?}", fren);
                 return;
             }
             None => {
-                let value = Fren::new(key);
+                let mut value = Fren::new(key);
+                value.rcan = Some(rcan);
                 self.inner.rpc(Set { key, value }).await.unwrap();
             }
         }

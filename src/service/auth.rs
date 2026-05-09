@@ -103,10 +103,10 @@ impl ProtocolHandler for AuthProtocol {
         match decode {
             Ok(d) => {
                 debug!("{:#?}", &d);
-                match check_rcan(d, &connection) {
+                match check_rcan(d.clone(), &connection) {
                     Ok(_) => {
                         info!("the rcan works");
-                        self.client.new_fren(connection.remote_id()).await;
+                        self.client.new_fren(connection.remote_id(),d).await;
                         send.write(&[1]).await.unwrap();
                     }
                     Err(e) => {
