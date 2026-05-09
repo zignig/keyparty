@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use frost_ed25519::Signature;
 use frost_ed25519::keys::KeyPackage;
 use frost_ed25519::keys::PublicKeyPackage;
 // Actor and support for the signing sequence
@@ -15,6 +16,7 @@ use tracing::error;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::service::irpc::SigStatus;
 use crate::signing::SigEvent;
 use crate::signing::TransMessage;
 use crate::signing::now;
@@ -40,7 +42,7 @@ pub struct QuorumWatcher {
     token: CancellationToken,
     online_peers: BTreeSet<PublicKey>,
     transactions: BTreeMap<i64, Sender<(PublicKey, TransMessage)>>,
-    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64, (i64, AnyError)>>>,
+    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<(i64, Signature), (i64, AnyError)>>>,
     key_package: Option<KeyPackage>,
     public_package: Option<PublicKeyPackage>,
 }
@@ -71,8 +73,9 @@ impl QuorumWatcher {
             token,
             online_peers: Default::default(),
             transactions: Default::default(),
-            tasks:
-                FuturesUnordered::<n0_future::boxed::BoxFuture<Result<i64, (i64, AnyError)>>>::new(),
+            tasks: FuturesUnordered::<
+                n0_future::boxed::BoxFuture<Result<(i64, Signature), (i64, AnyError)>>,
+            >::new(),
             key_package: None,
             public_package: None,
         }
@@ -94,6 +97,8 @@ impl QuorumWatcher {
             if self.online_peers.len() < (self.config.min()) {
                 warn!("quorum lost!");
                 self.state = QuorumSteps::Preparty;
+                // Tell the main runner that we have lost quorum
+                self.outgoing.send(GossipMessage::QuorumDown).await.unwrap();
                 return Ok(());
             }
         }
@@ -125,6 +130,8 @@ impl QuorumWatcher {
                     info!("Made Quorum");
                     info!("Peers {:?}", self.online_peers);
                     self.state = QuorumSteps::Quorum;
+                    // Tell the main runner that we have quorum
+                    self.outgoing.send(GossipMessage::QuorumUp).await.unwrap();
                 };
             }
 
@@ -218,18 +225,27 @@ impl QuorumWatcher {
                     self.handle_event(item).await?
                 }
                 // Signing transactions
-                val = self.tasks.next(), if !self.tasks.is_empty() => {
+                Some(val) = self.tasks.next(), if !self.tasks.is_empty() => {
                     info!("task finish {:#?}",&val);
-                    if let Some(val) = val {
-                        match &val {
-                            Ok(id) => {
-                                info!("transaction {} finished",&id);
-                                self.transactions.remove(id);
-                            },
-                            Err(e) => {
-                                error!("transaction error {:?}",e);
-                                self.transactions.remove(&e.0);
-                            },
+                    match val {
+                        Ok((transaction_id,signature)) => {
+                            info!("transaction {} finished",&transaction_id);
+                            self.transactions.remove(&transaction_id);
+                            let gm = GossipMessage::SigStatus {
+                                transaction_id,
+                                status: SigStatus::Sig {sig: signature}
+                            };
+                            self.outgoing.send(gm).await.unwrap();
+                        }
+                        Err((transaction_id,err)) => {
+                            error!("transaction {} errored ",&transaction_id);
+                            error!("{:#?}",err);
+                            self.transactions.remove(&transaction_id);
+                            let gm = GossipMessage::SigStatus{
+                                transaction_id,
+                                status : SigStatus::SigError { error: err.to_string() }
+                            };
+                            self.outgoing.send(gm).await.unwrap();
                         }
                     }
                 }

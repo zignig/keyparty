@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
                         }
                     }
                 };
-            };
+            }
 
             let signer = client.signer().await;
 
@@ -174,6 +174,7 @@ async fn main() -> Result<()> {
             println!("> messages to sign ");
             while let Some(text) = line_rx.recv().await {
                 let text = text.trim();
+                info!("{}", text);
                 if text != "" {
                     let reply = signer.sign(&text).await?;
                     info!("data back from the remote signer {:#?}", reply);

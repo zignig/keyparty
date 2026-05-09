@@ -18,7 +18,7 @@ use n0_future::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use crate::{service, signing::runner::MainRunner};
+use crate::{service::{self, irpc::SigStatus}, signing::runner::MainRunner};
 use crate::service::irpc::ServiceMessage;
 use crate::{IdentityApi, cli::Args, config::Config, service::irpc::Reply};
 
@@ -58,6 +58,11 @@ pub enum GossipMessage {
     Event { message: TransMessage },
     PeerDown,
     PeerUp,
+    // These stops at the signer exit point, and 
+    // don't go into the actual gossip network
+    SigStatus { transaction_id: i64 , status: SigStatus},
+    QuorumUp,
+    QuorumDown,
 }
 
 // Init and run the signing party.

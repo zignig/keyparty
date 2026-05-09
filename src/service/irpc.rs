@@ -2,6 +2,7 @@
 
 pub const ALPN: &[u8] = b"keyparty/service/0";
 
+use frost_ed25519::Signature;
 use iroh::{
     Endpoint,
     protocol::{AcceptError, ProtocolHandler},
@@ -12,13 +13,18 @@ use serde::{Deserialize, Serialize};
 use irpc::{Client, WithChannels, channel::oneshot, rpc_requests};
 
 use tokio::sync::mpsc::Sender;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::IdClient;
 
 // Service mesasges
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SigStatus {
+    Sig { sig: Signature },
+    SigError { error: String },
+}
 
-pub type Reply = oneshot::Sender<String>;
+pub type Reply = oneshot::Sender<SigStatus>;
 
 #[derive(Debug)]
 pub struct ServiceMessage {
@@ -31,12 +37,12 @@ impl ServiceMessage {
         Self { message, reply }
     }
 
-    pub fn message(&self) -> String { 
+    pub fn message(&self) -> String {
         self.message.clone()
     }
 
-    pub async fn reply(self, data: String) {
-        let _ = self.reply.send(data).await;
+    pub async fn send(self, sig: SigStatus) {
+        let _ = self.reply.send(sig).await;
     }
 }
 
@@ -49,7 +55,7 @@ struct ToSign {
 #[rpc_requests(message = SigningMessage)]
 #[derive(Serialize, Deserialize, Debug)]
 enum SignerProtocol {
-    #[rpc(tx=oneshot::Sender<Result<String,String>>)]
+    #[rpc(tx=oneshot::Sender<Result<SigStatus,String>>)]
     ToSign(ToSign),
 }
 
@@ -82,7 +88,7 @@ impl ProtocolHandler for ServiceActor {
                     let out_mess = ServiceMessage::new(inner.data.clone(), smtx);
                     let _ = self.service_out.send(out_mess).await;
                     let reply_string = smrx.await.unwrap();
-                    error!("back from the signer {:#?}",reply_string);
+                    debug!("back from the signer {:#?}", reply_string);
                     tx.send(Ok(reply_string)).await.ok();
                 }
             }
@@ -103,7 +109,7 @@ impl ServiceClient {
         }
     }
 
-    pub async fn sign(&self, data: &str) -> Result<String, anyhow::Error> {
+    pub async fn sign(&self, data: &str) -> Result<SigStatus, anyhow::Error> {
         self.inner
             .rpc(ToSign {
                 data: data.to_string(),
@@ -111,5 +117,4 @@ impl ServiceClient {
             .await?
             .map_err(|err| anyhow::anyhow!(err))
     }
-
 }

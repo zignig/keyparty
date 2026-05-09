@@ -30,6 +30,7 @@ enum SState {
     Finished,
     Fail,
 }
+
 pub struct SignerTask {
     my_id: PublicKey,
     transaction_id: i64,
@@ -50,6 +51,7 @@ pub struct SignerTask {
     // round 2
     signing_package: Option<SigningPackage>,
     signing_shares: BTreeMap<PublicKey, SignatureShare>,
+
     // output
     signatures: BTreeMap<PublicKey, Signature>,
 }
@@ -73,7 +75,6 @@ impl SignerTask {
         for node in nodes.iter() {
             id_map.insert(*node, Identifier::derive(node.as_bytes()).expect("bork"));
         }
-
 
         let sel = Self {
             my_id,
@@ -265,13 +266,12 @@ impl SignerTask {
                 error!("FAIL!!! on keypakage");
                 return Err(anyerr!("package fail"));
             }
-
         }
         Ok(false)
     }
 
     // Runner loop for the signer
-    pub async fn run(mut self) -> Result<i64, (i64, AnyError)> {
+    pub async fn run(mut self) -> Result<(i64, Signature), (i64, AnyError)> {
         warn!(" Starting Signer Task {:#?}", &self.state);
 
         let timeout = tokio::time::sleep(SignerTask::TIME_OUT);
@@ -282,7 +282,12 @@ impl SignerTask {
                 // Incoming events for the task
                 Some(event)  = self.incoming.recv() => {
                     match self.handle_event(event).await {
-                        Ok(fin) => if fin { return Ok(self.transaction_id)},
+
+                        Ok(fin) => if fin {
+                                if let Some(signature) = self.signatures.get(&self.my_id){
+                                    return Ok((self.transaction_id,signature.clone()));
+                                }
+                            },
                         Err(e) => error!("transaction error {} : {}",self.transaction_id,e),
                     };
                 },
