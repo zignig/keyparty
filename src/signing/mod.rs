@@ -2,9 +2,10 @@
 
 use bytes::Bytes;
 use frost_ed25519::{Signature as FrostSig, round1::SigningCommitments, round2::SignatureShare};
+use tokio_util::sync::CancellationToken;
 use std::{collections::BTreeMap, time::Duration};
 
-use tokio::sync::{mpsc::{Receiver, Sender}};
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use iroh::{Endpoint, PublicKey, SecretKey, Signature, endpoint::presets, protocol::RouterBuilder};
 use iroh_gossip::{
@@ -17,9 +18,9 @@ use n0_future::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use crate::{IdentityApi, cli::Args, config::Config, service::irpc::Reply};
-use crate::service::irpc::ServiceMessage;
 use crate::service;
+use crate::service::irpc::ServiceMessage;
+use crate::{IdentityApi, cli::Args, config::Config, service::irpc::Reply};
 
 mod auth;
 mod quorum;
@@ -58,9 +59,6 @@ pub enum GossipMessage {
     PeerUp,
 }
 
-
-
-
 // Init and run the signing party.
 pub async fn run(
     config: Config,
@@ -84,6 +82,8 @@ pub async fn run(
     let _ = endpoint.online().await;
     info!("Endpoint Online");
 
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+
     // Build the identity client
     let id = IdentityApi::new();
     let id_client = id.client();
@@ -101,7 +101,13 @@ pub async fn run(
     // if the service flag is set , create  the service node
     if run_service {
         warn!("Start  the external service");
-        tokio::spawn(service::run(config.clone(), id_client, service_out.clone()));
+        let token = cancel_token.clone();
+        tokio::spawn(service::run(
+            config.clone(),
+            id_client,
+            service_out.clone(),
+            token,
+        ));
     }
 
     // Gossip bits
@@ -113,7 +119,7 @@ pub async fn run(
     }
 
     //    let goss = gossip.subscribe_and_join(topic_id, peers.clone()).await?;
-   let goss = gossip.subscribe(topic_id, peers.clone()).await?;
+    let goss = gossip.subscribe(topic_id, peers.clone()).await?;
 
     let my_id = secret.public();
 
@@ -124,20 +130,28 @@ pub async fn run(
     let (from_signer, to_gossip) = tokio::sync::mpsc::channel::<GossipMessage>(10);
 
     // Create the signer
-    let signer =
-        quorum::QuorumWatcher::new(my_id.clone(), config.clone(), from_signer, to_signer, peers);
+    let signer = quorum::QuorumWatcher::new(
+        my_id.clone(),
+        config.clone(),
+        from_signer,
+        to_signer,
+        peers,
+        cancel_token.clone(),
+    );
 
     // Start the signer.
     tokio::spawn(signer.run());
 
     // Start the gossip interface.
     tokio::spawn(runner(
+        my_id.clone(),
         tx.clone(),
         rx,
         from_gossip.clone(),
         to_gossip,
         service_in,
         secret.clone(),
+        cancel_token.clone()
     ));
 
     // Bounce some messages
@@ -156,6 +170,7 @@ pub async fn run(
 
     // Wait for exit.
     tokio::signal::ctrl_c().await?;
+    cancel_token.cancel();
     info!("Exiting signer");
 
     let _ = router.shutdown().await;
@@ -166,15 +181,16 @@ pub async fn run(
 // Gossip runner
 // This shares messages to all participants.
 pub async fn runner(
+    _id: PublicKey,
     tx: GossipSender,
     mut rx: GossipReceiver,
     outgoing: Sender<SigEvents>,
     mut incoming: Receiver<GossipMessage>,
     mut service_in: Receiver<ServiceMessage>,
     secret: SecretKey,
+    cancel_token: CancellationToken
 ) -> Result<(), AnyError> {
-    // Map for the service transactions
-    let mut service_transactions = BTreeMap::<u64,Reply>::new();
+    let _service_transactions = BTreeMap::<u64, Reply>::new();
     // Select on the events
     loop {
         tokio::select! {
@@ -224,6 +240,11 @@ pub async fn runner(
                 // service_transactions.insert(4,r);
                 // println!("{:#?}",service_transactions);
                 service_message.reply(mess).await;
+            }
+
+            _ = cancel_token.cancelled() =>  { 
+                info!("Stop the main runner");
+                return Ok(());
             }
         }
     }

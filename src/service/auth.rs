@@ -116,7 +116,7 @@ impl ProtocolHandler for AuthProtocol {
                 }
             }
             Err(e) => {
-                self.client.remove(connection.remote_id()).await;
+                let _ = self.client.remove(connection.remote_id()).await;
                 send.write(&[0]).await.unwrap();
                 info!("{:#?}", e);
             }

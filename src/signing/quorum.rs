@@ -10,6 +10,7 @@ use n0_error::Result;
 use n0_future::FuturesUnordered;
 use n0_future::StreamExt;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio_util::sync::CancellationToken;
 use tracing::error;
 use tracing::{debug, info, warn};
 
@@ -36,6 +37,7 @@ pub struct QuorumWatcher {
     incoming: Receiver<SigEvents>,
     outgoing: Sender<GossipMessage>,
     peers: BTreeSet<PublicKey>,
+    token: CancellationToken,
     online_peers: BTreeSet<PublicKey>,
     transactions: BTreeMap<i64, Sender<(PublicKey, TransMessage)>>,
     tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<i64, (i64, AnyError)>>>,
@@ -51,6 +53,7 @@ impl QuorumWatcher {
         outgoing: Sender<GossipMessage>,
         incoming: Receiver<SigEvents>,
         peers_vec: Vec<PublicKey>,
+        token: CancellationToken,
     ) -> Self {
         let mut peer_set: BTreeSet<PublicKey> = Default::default();
 
@@ -65,6 +68,7 @@ impl QuorumWatcher {
             incoming,
             outgoing,
             peers: peer_set,
+            token,
             online_peers: Default::default(),
             transactions: Default::default(),
             tasks:
@@ -204,6 +208,11 @@ impl QuorumWatcher {
             .await;
         loop {
             tokio::select! {
+                // Cancel
+                _ = self.token.cancelled() => {
+                    info!("Quorum runner stopped");
+                    return Ok(());
+                }
                 // messages from the gossip network
                 Some(item) = self.incoming.recv() => {
                     self.handle_event(item).await?

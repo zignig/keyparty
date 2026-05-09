@@ -2047,6 +2047,7 @@ dependencies = [
  "snafu 0.9.0",
  "strum",
  "tokio",
+ "tokio-util",
  "toml",
  "tracing",
  "tracing-subscriber",

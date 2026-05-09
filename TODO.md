@@ -10,8 +10,7 @@
 
 # Outstanding stuff 
 
-1. rcan auth is working, it's only one layer deep , but seems to be working
-1. **add** defence againt the dark arts.
+
 
 ## Some todo stuff 
 
@@ -72,6 +71,8 @@ Maintaining quorm is harder than it looks.
 1. have auth hooks that only allow participants
 1. each node is a coordinator
 1. new endpoint
+1. rcan auth is working, it's only one layer deep , but seems to be working
+1. **add** defence againt the dark arts.
 
 
 ## Done move secondary keys into the keygen, 

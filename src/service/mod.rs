@@ -14,6 +14,7 @@ use iroh_tickets::Ticket;
 
 use n0_error::{AnyError, anyerr};
 use tokio::sync::mpsc::Sender;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
 
 use crate::{config::Config, id_store::IdClient, service::{irpc::ServiceMessage, ticket::ServiceTicket}};
@@ -21,7 +22,7 @@ use crate::{config::Config, id_store::IdClient, service::{irpc::ServiceMessage, 
 pub use auth::ALPN as AUTH_ALPN;
 pub use irpc::ALPN as SERVICE_ALPN;
 
-pub async fn run(config: Config, id_client: IdClient, service_out: Sender<ServiceMessage>) -> Result<()> {
+pub async fn run(config: Config, id_client: IdClient, service_out: Sender<ServiceMessage>,token: CancellationToken) -> Result<()> {
     info!("run the external service");
     let secret_key = config.get_service_key();
     println!("service id {}", secret_key.public());
@@ -41,14 +42,17 @@ pub async fn run(config: Config, id_client: IdClient, service_out: Sender<Servic
         .accept(auth::ALPN, proto)
         .accept(irpc::ALPN, rpc)
         .spawn();
-    tokio::signal::ctrl_c().await?;
+    
+    // wait for the upper to finish
+    token.cancelled().await ;
+    info!("Service runner finishing");
     Ok(())
 }
 
 pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
     info!("Issue a rcan blob");
     match args.command {
-        crate::cli::Command::Issue { key, all } => {
+        crate::cli::Command::Issue { key, .. } => {
             info!("issue an new ticket for {:}", key.fmt_short());
             let secret_key = config.get_service_key();
             if let Some(verify_key) = config.public_key() {
