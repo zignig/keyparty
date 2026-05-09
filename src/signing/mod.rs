@@ -1,14 +1,12 @@
 // Signing can be done with a gossip channel
 
 use bytes::Bytes;
-use frost_ed25519::{round1::SigningCommitments, round2::SignatureShare,Signature as FrostSig};
-use std::time::Duration;
+use frost_ed25519::{Signature as FrostSig, round1::SigningCommitments, round2::SignatureShare};
+use std::{collections::BTreeMap, time::Duration};
 
-use tokio::{sync::mpsc::Receiver, sync::mpsc::Sender};
+use tokio::sync::{mpsc::{Receiver, Sender}};
 
-use iroh::{
-    Endpoint, PublicKey, SecretKey, Signature, endpoint::presets, protocol::RouterBuilder
-};
+use iroh::{Endpoint, PublicKey, SecretKey, Signature, endpoint::presets, protocol::RouterBuilder};
 use iroh_gossip::{
     ALPN as GOSSIP_APLN, Gossip, TopicId,
     api::{Event, GossipReceiver, GossipSender},
@@ -19,15 +17,14 @@ use n0_future::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use crate::{IdentityApi, cli::Args, config::Config};
-
+use crate::{IdentityApi, cli::Args, config::Config, service::irpc::Reply};
+use crate::service::irpc::ServiceMessage;
 use crate::service;
 
 mod auth;
 mod quorum;
 mod signer;
 mod validator;
-
 
 use auth::Authenticator;
 
@@ -61,8 +58,16 @@ pub enum GossipMessage {
     PeerUp,
 }
 
+
+
+
 // Init and run the signing party.
-pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_service: bool) -> Result<()> {
+pub async fn run(
+    config: Config,
+    _args: Args,
+    message: Option<Bytes>,
+    run_service: bool,
+) -> Result<()> {
     info!("-- Start the signing party --");
 
     let secret = config.secret().clone();
@@ -79,10 +84,10 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
     let _ = endpoint.online().await;
     info!("Endpoint Online");
 
-    // Build the identity client 
+    // Build the identity client
     let id = IdentityApi::new();
     let id_client = id.client();
-    
+
     // Build the gossip network.
     let gossip = Gossip::builder().spawn(endpoint.clone());
 
@@ -91,10 +96,12 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
         .accept(GOSSIP_APLN, gossip.clone())
         .spawn();
 
+    // messages from the service
+    let (service_out, service_in) = tokio::sync::mpsc::channel::<ServiceMessage>(10);
     // if the service flag is set , create  the service node
     if run_service {
         warn!("Start  the external service");
-        tokio::spawn(service::run(config.clone(),id_client));
+        tokio::spawn(service::run(config.clone(), id_client, service_out.clone()));
     }
 
     // Gossip bits
@@ -105,7 +112,8 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
         info!("Waiting for peer : {:}", peer.fmt_short());
     }
 
-    let goss = gossip.subscribe_and_join(topic_id, peers.clone()).await?;
+    //    let goss = gossip.subscribe_and_join(topic_id, peers.clone()).await?;
+   let goss = gossip.subscribe(topic_id, peers.clone()).await?;
 
     let my_id = secret.public();
 
@@ -128,6 +136,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
         rx,
         from_gossip.clone(),
         to_gossip,
+        service_in,
         secret.clone(),
     ));
 
@@ -161,12 +170,16 @@ pub async fn runner(
     mut rx: GossipReceiver,
     outgoing: Sender<SigEvents>,
     mut incoming: Receiver<GossipMessage>,
+    mut service_in: Receiver<ServiceMessage>,
     secret: SecretKey,
 ) -> Result<(), AnyError> {
+    // Map for the service transactions
+    let service_transactions = BTreeMap::<u64,Reply>::new();
+
     // Select on the events
     loop {
         tokio::select! {
-            //biased;
+            // biased;
             // Events from the gossip network.
             event = rx.try_next() => {
                 let event = event?;
@@ -195,6 +208,7 @@ pub async fn runner(
                     }
                 }
             }
+
             // Incoming message from signer.
             Some(signer) = incoming.recv() =>{
                 debug!("SIGNER ==> GOSSIP {:?}",signer);
@@ -202,6 +216,13 @@ pub async fn runner(
                 let _ = tx.broadcast(sig_mess).await;
             }
 
+            // Messges from the service
+            Some(service_message) = service_in.recv() => {
+                error!(" in gossip => {:#?}",service_message);
+                // let mess = service_message.message();
+                let mess = "woo hoo it seems to work".to_string();
+                service_message.reply(mess).await;
+            }
         }
     }
 }

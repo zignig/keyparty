@@ -13,14 +13,15 @@ use iroh::{Endpoint, endpoint::presets, protocol::RouterBuilder};
 use iroh_tickets::Ticket;
 
 use n0_error::{AnyError, anyerr};
+use tokio::sync::mpsc::Sender;
 use tracing::{debug, info};
 
-use crate::{config::Config, id_store::IdClient, service::ticket::ServiceTicket};
+use crate::{config::Config, id_store::IdClient, service::{irpc::ServiceMessage, ticket::ServiceTicket}};
 
 pub use auth::ALPN as AUTH_ALPN;
 pub use irpc::ALPN as SERVICE_ALPN;
 
-pub async fn run(config: Config, id_client: IdClient) -> Result<()> {
+pub async fn run(config: Config, id_client: IdClient, service_out: Sender<ServiceMessage>) -> Result<()> {
     info!("run the external service");
     let secret_key = config.get_service_key();
     println!("service id {}", secret_key.public());
@@ -28,7 +29,7 @@ pub async fn run(config: Config, id_client: IdClient) -> Result<()> {
     // Create the authenication sets
     let (hook, proto) = auth::incoming(id_client.clone());
 
-    let rpc = irpc::ServiceActor::new(id_client);
+    let rpc = irpc::ServiceActor::new(id_client,service_out);
 
     let endpoint = Endpoint::builder(presets::N0)
         .secret_key(secret_key.clone())

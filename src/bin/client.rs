@@ -163,7 +163,8 @@ async fn main() -> Result<()> {
             while let Some(text) = line_rx.recv().await {
                 let text = text.trim();
                 if text != "" {
-                    signer.sign(&text).await?;
+                    let reply = signer.sign(&text).await?;
+                    info!("data back from the remote signer {:#?}",reply);
                 }
             }
 
