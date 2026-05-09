@@ -11,7 +11,6 @@ use tracing::{info, warn};
 
 use crate::service::caps::Caps;
 
-
 // Stored endpoint data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Status {
@@ -28,7 +27,7 @@ pub struct Fren {
     id: EndpointId,
     status: Status,
     created: i64,
-    rcan: Option<Rcan<Caps>>
+    rcan: Option<Rcan<Caps>>,
 }
 
 impl Fren {
@@ -36,8 +35,10 @@ impl Fren {
         Self {
             id: id,
             status: Status::Seen,
-            created: chrono::Utc::now().timestamp_nanos_opt().expect("time does not exist"),
-            rcan: None
+            created: chrono::Utc::now()
+                .timestamp_nanos_opt()
+                .expect("time does not exist"),
+            rcan: None,
         }
     }
 }
@@ -50,6 +51,11 @@ struct Get {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct Remove {
+    key: EndpointId,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct Set {
     key: EndpointId,
     value: Fren,
@@ -57,7 +63,6 @@ struct Set {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct List;
-
 
 impl From<(EndpointId, Fren)> for Set {
     fn from((key, value): (EndpointId, Fren)) -> Self {
@@ -71,6 +76,8 @@ enum StorageProtocol {
     #[rpc(tx=oneshot::Sender<Option<Fren>>)]
     Get(Get),
     #[rpc(tx=oneshot::Sender<()>)]
+    Remove(Remove),
+    #[rpc(tx=oneshot::Sender<()>)]
     Set(Set),
     #[rpc(tx=oneshot::Sender<Vec<Fren>>)]
     List(List),
@@ -78,7 +85,7 @@ enum StorageProtocol {
 
 struct Actor {
     recv: tokio::sync::mpsc::Receiver<IdentityMessage>,
-    store: BTreeMap<EndpointId,Fren>,
+    store: BTreeMap<EndpointId, Fren>,
 }
 
 impl Actor {
@@ -92,7 +99,7 @@ impl Actor {
         match msg {
             IdentityMessage::Get(get) => {
                 let WithChannels { tx, inner, .. } = get;
-                let value = match self.store.get(&inner.key){
+                let value = match self.store.get(&inner.key) {
                     Some(value) => Some(value.clone()),
                     None => None,
                 };
@@ -101,15 +108,21 @@ impl Actor {
 
             IdentityMessage::Set(set) => {
                 let WithChannels { tx, inner, .. } = set;
-                self.store.insert(inner.key,inner.value);
+                self.store.insert(inner.key, inner.value);
+                tx.send(()).await.ok();
+            }
+
+            IdentityMessage::Remove(remove) => { 
+                let WithChannels { tx,inner,.. } = remove ;
+                self.store.remove(&inner.key);
                 tx.send(()).await.ok();
             }
 
             IdentityMessage::List(list) => {
-                let WithChannels{ tx , .. } = list;
-                let mut res: Vec<Fren>  = Vec::new();
-                for item in  self.store.iter(){
-                    let (_,item) = item;
+                let WithChannels { tx, .. } = list;
+                let mut res: Vec<Fren> = Vec::new();
+                for item in self.store.iter() {
+                    let (_, item) = item;
                     res.push(item.clone());
                 }
                 tx.send(res).await.ok();
@@ -126,7 +139,10 @@ impl IdentityApi {
     pub fn new() -> IdentityApi {
         let (tx, rx) = tokio::sync::mpsc::channel(5);
         let store = BTreeMap::default();
-        let actor = Actor { recv: rx,store: store };
+        let actor = Actor {
+            recv: rx,
+            store: store,
+        };
         n0_future::task::spawn(actor.run());
         IdentityApi { tx: tx.clone() }
     }
@@ -139,7 +155,7 @@ impl IdentityApi {
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct IdClient {
     inner: Client<StorageProtocol>,
 }
@@ -152,10 +168,10 @@ impl IdClient {
 
     pub async fn new_fren(&self, key: EndpointId) {
         match self.inner.rpc(Get { key }).await.unwrap() {
-            Some(fren) => { 
-                warn!("existing fren => {:#?}",fren);
-                return
-            },
+            Some(fren) => {
+                warn!("existing fren => {:#?}", fren);
+                return;
+            }
             None => {
                 let value = Fren::new(key);
                 self.inner.rpc(Set { key, value }).await.unwrap();
@@ -167,12 +183,11 @@ impl IdClient {
         self.inner.rpc(Set { key, value }).await
     }
 
-    pub async fn is_fren(&self, key: EndpointId) -> bool {
-        let _val = self.inner.rpc(Get { key }).await;
-        false
+    pub async fn remove(&self, key: EndpointId) -> irpc::Result<()> {
+        self.inner.rpc(Remove { key }).await
     }
 
-    pub async fn list(&self) -> irpc::Result<Vec<Fren>> { 
+    pub async fn list(&self) -> irpc::Result<Vec<Fren>> {
         self.inner.rpc(List {}).await
     }
 }

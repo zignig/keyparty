@@ -147,6 +147,7 @@ pub async fn run(config: Config, _args: Args, message: Option<Bytes>, run_servic
 
     // Wait for exit.
     tokio::signal::ctrl_c().await?;
+    info!("Exiting signer");
 
     let _ = router.shutdown().await;
 

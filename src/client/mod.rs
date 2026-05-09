@@ -1,6 +1,6 @@
 // Client tools for connecting to the keyparty service
 
-use crate::service::AUTH_ALPN;
+use crate::{ServiceClient, service::{AUTH_ALPN, SERVICE_ALPN}};
 use anyhow::Result;
 use iroh::{Endpoint, EndpointId};
 use tracing::{debug, info, warn};
@@ -20,6 +20,12 @@ impl KeyClient {
             rcan,
             authed: false,
         }
+    }
+
+    pub async fn sign(&self,data: &str) -> Result<()>{ 
+        let client = ServiceClient::connect(self.endpoint.clone(),self.target);
+        client.sign(data).await?;
+        Ok(())
     }
 
     pub async fn login(&mut self) -> Result<u8> {

@@ -17,6 +17,8 @@ mod id_store;
 pub use cli::{Args,Command};
 pub use config::Config;
 
+pub use service::irpc::ServiceClient;
+
 pub use client::KeyClient;
 pub use service::ticket::ServiceTicket;
 pub use service::caps::Caps;

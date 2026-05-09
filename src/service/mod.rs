@@ -3,8 +3,8 @@
 // and a signing irpc interface
 
 mod auth;
-mod irpc;
 
+pub mod irpc;
 pub mod caps;
 pub mod ticket;
 
@@ -16,14 +16,19 @@ use n0_error::{AnyError, anyerr};
 use tracing::{debug, info};
 
 use crate::{config::Config, id_store::IdClient, service::ticket::ServiceTicket};
+
 pub use auth::ALPN as AUTH_ALPN;
+pub use irpc::ALPN as SERVICE_ALPN;
 
 pub async fn run(config: Config, id_client: IdClient) -> Result<()> {
     info!("run the external service");
     let secret_key = config.get_service_key();
     println!("service id {}", secret_key.public());
 
+    // Create the authenication sets
     let (hook, proto) = auth::incoming(id_client);
+
+    let rpc = irpc::ServiceActor::new();
 
     let endpoint = Endpoint::builder(presets::N0)
         .secret_key(secret_key.clone())
@@ -33,9 +38,9 @@ pub async fn run(config: Config, id_client: IdClient) -> Result<()> {
 
     let _router = RouterBuilder::new(endpoint.clone())
         .accept(auth::ALPN, proto)
+        .accept(irpc::ALPN, rpc)
         .spawn();
     tokio::signal::ctrl_c().await?;
-
     Ok(())
 }
 
@@ -43,7 +48,7 @@ pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
     info!("Issue a rcan blob");
     match args.command {
         crate::cli::Command::Issue { key, all } => {
-            info!("issue an new ticket for {:}",key.fmt_short());
+            info!("issue an new ticket for {:}", key.fmt_short());
             let secret_key = config.get_service_key();
             if let Some(verify_key) = config.public_key() {
                 debug!("issue rcan");

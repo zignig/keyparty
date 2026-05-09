@@ -1,7 +1,5 @@
 // Basic example of a keyparty client
 
-use std::any;
-
 use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::KeyClient;
@@ -146,32 +144,16 @@ async fn main() -> Result<()> {
                 .secret_key(secret_key.clone())
                 .bind()
                 .await?;
-            // let _ = endpoint.online().await;
+            let _ = endpoint.online().await;
             // create the key client
             info!("create an endpoint and connect to {}", target.fmt_short());
             let mut client = KeyClient::new(endpoint.clone(), target, rcan);
             warn!("send auth");
-            let mut exit = false;
-            let mut count = 0;
-            const MAX_COUNT: i32 = 5;
-            while !exit {
-                let val = match client.login().await {
-                   Ok(val )  => {
-                        warn!("auth returned {:?}", val);
-                        exit = true;
-                        val
-                    }
-                    Err(e) => {
-                        error!("conn fail !! {:?} - {:?}", e, count);
-                        count += 1;
-                        if count == MAX_COUNT {
-                            return Err(anyerr!("connection failed"));
-                        }
-                        0
-                    }
-                };
-                println!("{:?}", val);
+            let val = client.login().await?;
+            if val == 1 { 
+                info!("login succesful");
             }
+            client.sign("test data").await?;
             endpoint.close().await;
         } else {
             info!("no rcan");
