@@ -4,10 +4,7 @@ use frost_ed25519::VerifyingKey;
 use iroh_tickets::{ParseError, Ticket};
 
 use iroh_base::EndpointId;
-use rcan::Rcan;
 use serde::{Deserialize, Serialize};
-
-use crate::service::caps::Caps;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServiceTicket {

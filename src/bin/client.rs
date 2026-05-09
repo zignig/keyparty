@@ -3,7 +3,7 @@
 use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::{KeyClient, service::irpc::SigStatus};
-use n0_error::{Result, StdResultExt, anyerr};
+use n0_error::{Result, StdResultExt};
 use tracing::{debug, error, info, warn};
 // use tracing_subscriber::filter::{LevelFilter, Targets};
 // use tracing_subscriber::prelude::*;

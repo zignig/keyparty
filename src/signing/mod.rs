@@ -2,31 +2,27 @@
 
 use bytes::Bytes;
 use frost_ed25519::{Signature as FrostSig, round1::SigningCommitments, round2::SignatureShare};
-use tokio_util::sync::CancellationToken;
-use std::{collections::BTreeMap, time::Duration};
-
-use tokio::sync::mpsc::{Receiver, Sender};
+use std::time::Duration;
 
 use iroh::{Endpoint, PublicKey, SecretKey, Signature, endpoint::presets, protocol::RouterBuilder};
-use iroh_gossip::{
-    ALPN as GOSSIP_APLN, Gossip, TopicId,
-    api::{Event, GossipReceiver, GossipSender},
-};
+use iroh_gossip::{ALPN as GOSSIP_APLN, Gossip, TopicId, api::GossipSender};
 
-use n0_error::{AnyError, Result};
-use n0_future::StreamExt;
+use n0_error::Result;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
-use crate::{service::{self, irpc::SigStatus}, signing::runner::MainRunner};
 use crate::service::irpc::ServiceMessage;
-use crate::{IdentityApi, cli::Args, config::Config, service::irpc::Reply};
+use crate::{IdentityApi, cli::Args, config::Config};
+use crate::{
+    service::{self, irpc::SigStatus},
+    signing::runner::MainRunner,
+};
 
 mod auth;
 mod quorum;
+mod runner;
 mod signer;
 mod validator;
-mod runner;
 
 use auth::Authenticator;
 
@@ -53,24 +49,27 @@ pub struct TransMessage {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum GossipMessage {
     Init,
-    Hello { timestamp: i64 },
+    Hello {
+        timestamp: i64,
+    },
     Waves,
-    Event { message: TransMessage },
+    Event {
+        message: TransMessage,
+    },
     PeerDown,
     PeerUp,
-    // These stops at the signer exit point, and 
+    // These stops at the signer exit point, and
     // don't go into the actual gossip network
-    SigStatus { transaction_id: i64 , status: SigStatus},
+    SigStatus {
+        transaction_id: i64,
+        status: SigStatus,
+    },
     QuorumUp,
     QuorumDown,
 }
 
 // Init and run the signing party.
-pub async fn run(
-    config: Config,
-    _args: Args,
-    run_service: bool,
-) -> Result<()> {
+pub async fn run(config: Config, _args: Args, run_service: bool) -> Result<()> {
     info!("-- Start the signing party --");
 
     let secret = config.secret().clone();
@@ -149,20 +148,19 @@ pub async fn run(
 
     // Start the gossip interface.
     let main_runner = MainRunner::new(
-            my_id.clone(),
-            peers,
+        my_id.clone(),
+        peers,
         tx.clone(),
         rx,
         from_gossip.clone(),
         to_gossip,
         service_in,
         secret.clone(),
-        cancel_token.clone()
+        cancel_token.clone(),
     );
-    
+
     // Spawn the main runner for the signer.
     tokio::spawn(main_runner.run());
-
 
     // Bounce some messages
     tokio::spawn(beacon(tx.clone(), secret.clone()));
@@ -176,7 +174,6 @@ pub async fn run(
 
     Ok(())
 }
-
 
 // Chuck a hello onto the gossip.
 pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {

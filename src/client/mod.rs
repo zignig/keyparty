@@ -1,9 +1,6 @@
 // Client tools for connecting to the keyparty service
 
-use crate::{
-    ServiceClient,
-    service::{AUTH_ALPN, SERVICE_ALPN},
-};
+use crate::{ServiceClient, service::AUTH_ALPN};
 use anyhow::Result;
 use iroh::{Endpoint, EndpointId};
 use tracing::{debug, info, warn};

@@ -7,13 +7,10 @@
 
 use anyhow::Result;
 // use ed25519_dalek::pkcs8::spki::der::pem::decode;
-use iroh::{EndpointId, PublicKey, SecretKey};
+use iroh::{EndpointId, SecretKey};
 use rcan::{Capability, Expires, Rcan};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, time::Duration};
-use tracing::info;
-
-use crate::service::auth::RCanAuth;
 
 /// A set of capabilities
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]

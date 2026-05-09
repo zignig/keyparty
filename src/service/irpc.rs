@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use irpc::{Client, WithChannels, channel::oneshot, rpc_requests};
 
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::IdClient;
 

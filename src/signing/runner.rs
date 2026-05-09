@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use bytes::Bytes;
-use iroh::{EndpointId, PublicKey, SecretKey};
+use iroh::{PublicKey, SecretKey};
 use iroh_gossip::api::{Event, GossipReceiver, GossipSender};
 use n0_error::Result;
 use n0_future::StreamExt;
