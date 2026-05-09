@@ -2,13 +2,14 @@
 
 use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
-use keyparty::KeyClient;
+use keyparty::{KeyClient, service::irpc::SigStatus};
 use n0_error::{Result, StdResultExt, anyerr};
 use tracing::{debug, error, info, warn};
 // use tracing_subscriber::filter::{LevelFilter, Targets};
 // use tracing_subscriber::prelude::*;
 
 mod config {
+    use frost_ed25519::VerifyingKey;
     use iroh::{EndpointId, PublicKey, SecretKey};
     use std::path::PathBuf;
 
@@ -22,6 +23,7 @@ mod config {
     pub struct Settings {
         secret: SecretKey,
         target: Option<EndpointId>,
+        origin: Option<VerifyingKey>,
         rcan: Option<String>,
         #[serde(skip)]
         config_path: PathBuf,
@@ -53,6 +55,7 @@ mod config {
             let set = Settings {
                 secret,
                 target: None,
+                origin: None,
                 rcan: None,
                 config_path,
             };
@@ -64,6 +67,7 @@ mod config {
             info!("Save a new ticket");
             println!("{:#?}", ticket);
             self.target = Some(ticket.target);
+            self.origin = Some(ticket.origin);
             self.rcan = Some(ticket.rcan);
             self.save();
             Ok(())
@@ -71,6 +75,10 @@ mod config {
 
         pub fn secret(&self) -> SecretKey {
             self.clone().secret
+        }
+
+        pub fn origin(&self) -> Option<VerifyingKey> { 
+            self.clone().origin
         }
 
         pub fn public(&self) -> EndpointId {
@@ -177,7 +185,17 @@ async fn main() -> Result<()> {
                 info!("{}", text);
                 if text != "" {
                     let reply = signer.sign(&text).await?;
-                    info!("data back from the remote signer {:#?}", reply);
+                    // info!("data back from the remote signer {:#?}", reply);
+                    match reply {
+                        SigStatus::Sig { sig } => {
+                            println!("Is sig {:#?}", sig);
+                            if let Some(origin) = config.origin() { 
+                                let r = origin.verify(text.as_bytes(), &sig);
+                                print!("result {:#?}",r);
+                            }
+                        }
+                        SigStatus::SigError { error } => error!("Signing Error {:#?}",error),
+                    }
                 }
             }
 

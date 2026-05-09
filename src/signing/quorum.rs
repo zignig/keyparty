@@ -226,7 +226,7 @@ impl QuorumWatcher {
                 }
                 // Signing transactions
                 Some(val) = self.tasks.next(), if !self.tasks.is_empty() => {
-                    info!("task finish {:#?}",&val);
+                    debug!("task finish {:#?}",&val);
                     match val {
                         Ok((transaction_id,signature)) => {
                             info!("transaction {} finished",&transaction_id);

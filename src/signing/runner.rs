@@ -126,9 +126,9 @@ impl MainRunner {
                                 match signer {
                                     // Find the transaction in the service transactions
                                     GossipMessage::SigStatus{transaction_id,status} => { 
-                                        println!("transaction map {:#?}",&self.transaction_map);
-                                        println!("transaction id {}",&transaction_id);
-                                        println!("status {:#?}",&status);
+                                        // println!("transaction map {:#?}",&self.transaction_map);
+                                        // println!("transaction id {}",&transaction_id);
+                                        // println!("status {:#?}",&status);
                                         if let Some(reply) = self.transaction_map.remove(&transaction_id){
                                             reply.send(status).await?;
                                         }

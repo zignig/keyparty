@@ -69,7 +69,6 @@ pub enum GossipMessage {
 pub async fn run(
     config: Config,
     _args: Args,
-    message: Option<Bytes>,
     run_service: bool,
 ) -> Result<()> {
     info!("-- Start the signing party --");
@@ -168,17 +167,6 @@ pub async fn run(
     // Bounce some messages
     tokio::spawn(beacon(tx.clone(), secret.clone()));
 
-    // If there is signage , inject some messages.
-    if let Some(message) = message.clone() {
-        tokio::spawn(message_boop(
-            my_id.clone(),
-            from_gossip,
-            tx.clone(),
-            secret.clone(),
-            message,
-        ));
-    }
-
     // Wait for exit.
     tokio::signal::ctrl_c().await?;
     cancel_token.cancel();
@@ -200,38 +188,6 @@ pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
         let sig_mess = SignedMessage::sign_and_encode(&secret_key, &message)?;
         let _ = tx.broadcast(sig_mess).await;
         tokio::time::sleep(Duration::from_secs(BEACON_DURATION)).await;
-    }
-}
-
-// TESTING , some testing to inject signing messages
-pub async fn message_boop(
-    id: PublicKey,
-    tx: Sender<SigEvents>,
-    gtx: GossipSender,
-    secret_key: SecretKey,
-    message: Bytes,
-) -> Result<()> {
-    warn!("start message booper");
-    loop {
-        let gm = GossipMessage::Event {
-            message: TransMessage {
-                transaction_id: now(),
-                event: SigEvent::Start {
-                    sig_message: message.clone(),
-                },
-            },
-        };
-        // Send local
-        let sig_m = SigEvents {
-            id,
-            message: gm.clone(),
-        };
-        let _ = tx.send(sig_m).await;
-
-        // Send to gossip
-        let g_mess = SignedMessage::sign_and_encode(&secret_key, &gm)?;
-        let _ = gtx.broadcast(g_mess).await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 

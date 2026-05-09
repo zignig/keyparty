@@ -1,6 +1,5 @@
 // Cli entries
 
-use bytes::Bytes;
 use clap_derive::Parser;
 use iroh::PublicKey;
 
@@ -25,7 +24,6 @@ pub enum Command {
         ticket: String,
     },
     Sign {
-        message: Option<Bytes>,
         #[arg(long,short, default_value_t = false)]
         service: bool,
     },
