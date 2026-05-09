@@ -47,7 +47,10 @@ async fn main() -> Result<()> {
             ref message,
             service,
         } => signing::run(config, args.clone(), message.clone(), service).await,
-        Command::Issue { .. } => service::issue(config, args.clone()),
+        Command::Issue { .. } => {
+            let _  = service::issue(config.clone(), args.clone());
+            signing::run(config, args.clone(), None, true).await
+        }
     };
     // info!("{:#?}", res);
     Ok(())

@@ -3,7 +3,7 @@
 use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::KeyClient;
-use n0_error::{Result, anyerr};
+use n0_error::{Result, StdResultExt, anyerr};
 use tracing::{debug, error, info, warn};
 // use tracing_subscriber::filter::{LevelFilter, Targets};
 // use tracing_subscriber::prelude::*;
@@ -150,10 +150,23 @@ async fn main() -> Result<()> {
             let mut client = KeyClient::new(endpoint.clone(), target, rcan);
             warn!("send auth");
             let val = client.login().await?;
-            if val == 1 { 
+            let signer = client.signer().await;
+            if val == 1 {
                 info!("login succesful");
             }
-            client.sign("test data").await?;
+
+            let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
+            std::thread::spawn(move || input_loop(line_tx));
+
+            // broadcast each line we type
+            println!("> messages to sign ");
+            while let Some(text) = line_rx.recv().await {
+                let text = text.trim();
+                if text != "" {
+                    signer.sign(&text).await?;
+                }
+            }
+
             endpoint.close().await;
         } else {
             info!("no rcan");
@@ -163,4 +176,14 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn input_loop(line_tx: tokio::sync::mpsc::Sender<String>) -> Result<()> {
+    let mut buffer = String::new();
+    let stdin = std::io::stdin(); // We get `Stdin` here.
+    loop {
+        stdin.read_line(&mut buffer).anyerr()?;
+        line_tx.blocking_send(buffer.clone()).anyerr()?;
+        buffer.clear();
+    }
 }

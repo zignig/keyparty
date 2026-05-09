@@ -26,9 +26,9 @@ pub async fn run(config: Config, id_client: IdClient) -> Result<()> {
     println!("service id {}", secret_key.public());
 
     // Create the authenication sets
-    let (hook, proto) = auth::incoming(id_client);
+    let (hook, proto) = auth::incoming(id_client.clone());
 
-    let rpc = irpc::ServiceActor::new();
+    let rpc = irpc::ServiceActor::new(id_client);
 
     let endpoint = Endpoint::builder(presets::N0)
         .secret_key(secret_key.clone())

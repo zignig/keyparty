@@ -16,6 +16,8 @@ use irpc::{
 };
 use tracing::info;
 
+use crate::IdClient;
+
 // Irpc structs
 #[derive(Debug, Serialize, Deserialize)]
 struct ToSign {
@@ -31,17 +33,24 @@ enum SignerProtocol {
 
 #[derive(Debug)]
 pub struct ServiceActor {
+    id_client: IdClient,
     active: bool,
 }
 
 impl ServiceActor {
-    pub fn new() -> Self {
-        Self { active: true }
+    pub fn new(id_client: IdClient) -> Self {
+        Self {
+            id_client,
+            active: true,
+        }
     }
 }
 
 impl ProtocolHandler for ServiceActor {
     async fn accept(&self, conn: iroh::endpoint::Connection) -> Result<(), AcceptError> {
+        if let Some(fren)= self.id_client.get(conn.remote_id()).await.unwrap(){
+            info!("{:?}", fren);
+        }
         while let Some(msg) = read_request::<SignerProtocol>(&conn).await? {
             match msg {
                 SigningMessage::ToSign(msg) => {
