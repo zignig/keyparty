@@ -5,13 +5,17 @@
 // this makes keyparty a binary and a lib for clients
 
 pub mod client;
+pub mod keygen;
+pub mod service;
+pub mod ticket;
+pub mod signing;
 
-mod service;
-mod signing;
 mod config;
 mod cli;
 mod id_store;
 
+pub use cli::{Args,Command};
+pub use config::Config;
 
 pub use client::KeyClient;
 pub use service::ticket::ServiceTicket;

@@ -4,19 +4,7 @@ use clap::Parser;
 use n0_error::Result;
 use tracing::info;
 
-mod cli;
-mod config;
-mod keygen;
-mod signing;
-mod ticket;
-mod service;
-mod id_store;
-
-
-
-use cli::{Args, Command};
-use config::Config;
-use id_store::IdentityApi;
+use keyparty::{Args, Command, Config, keygen, service, signing};
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::prelude::*;
 
@@ -46,9 +34,7 @@ async fn main() -> Result<()> {
     let res = match args.command {
         Command::Generate { .. } | Command::Join { .. } => {
             // So it gets dropped
-            {
-                keygen::run(config.clone(), args).await
-            }
+            { keygen::run(config.clone(), args).await }
             // FIX , run up the signer in base mode.
             // use preparty to generate RBAC keys
             // let new_args = cli::Args {
@@ -57,8 +43,11 @@ async fn main() -> Result<()> {
             // };
             // signing::run(config, new_args, None).await
         }
-        Command::Sign { ref message, service } => signing::run(config, args.clone(), message.clone(),service).await,
-        Command::Issue { .. } => service::issue(config,args.clone())
+        Command::Sign {
+            ref message,
+            service,
+        } => signing::run(config, args.clone(), message.clone(), service).await,
+        Command::Issue { .. } => service::issue(config, args.clone()),
     };
     // info!("{:#?}", res);
     Ok(())
