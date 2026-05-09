@@ -23,7 +23,7 @@ pub type Reply = oneshot::Sender<String>;
 #[derive(Debug)]
 pub struct ServiceMessage {
     message: String,
-    reply: Reply,
+    pub reply: Reply,
 }
 
 impl ServiceMessage {

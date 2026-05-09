@@ -174,8 +174,7 @@ pub async fn runner(
     secret: SecretKey,
 ) -> Result<(), AnyError> {
     // Map for the service transactions
-    let service_transactions = BTreeMap::<u64,Reply>::new();
-
+    let mut service_transactions = BTreeMap::<u64,Reply>::new();
     // Select on the events
     loop {
         tokio::select! {
@@ -221,6 +220,9 @@ pub async fn runner(
                 error!(" in gossip => {:#?}",service_message);
                 // let mess = service_message.message();
                 let mess = "woo hoo it seems to work".to_string();
+                // let r = service_message.reply;
+                // service_transactions.insert(4,r);
+                // println!("{:#?}",service_transactions);
                 service_message.reply(mess).await;
             }
         }
