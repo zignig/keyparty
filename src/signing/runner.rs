@@ -1,16 +1,17 @@
 // The main runner for the signing process
 
+use bytes::Bytes;
 use iroh::{PublicKey, SecretKey};
 use iroh_gossip::api::{Event, GossipReceiver, GossipSender};
 use n0_error::{AnyError, Result};
 use n0_future::StreamExt;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     service::irpc::ServiceMessage,
-    signing::{GossipMessage, SigEvents, SignedMessage},
+    signing::{GossipMessage, SigEvent, SigEvents, SignedMessage, TransMessage, now},
 };
 
 pub struct MainRunner {
@@ -50,6 +51,30 @@ impl MainRunner {
         }
     }
 
+    pub async fn insert(&self, message: Bytes) -> Result<i64> {
+        warn!("insert message ");
+        let transaction_id = now();
+        let gm = GossipMessage::Event {
+            message: TransMessage {
+                transaction_id,
+                event: SigEvent::Start {
+                    sig_message: message.clone(),
+                },
+            },
+        };
+        // Send local
+        let sig_m = SigEvents {
+            id: self.id,
+            message: gm.clone(),
+        };
+        let _ = self.outgoing.send(sig_m).await;
+
+        // Send to gossip
+        let g_mess = SignedMessage::sign_and_encode(&self.secret, &gm)?;
+        let _ = self.tx.broadcast(g_mess).await;
+        Ok(transaction_id)
+    }
+
     pub async fn run(mut self) -> Result<()> {
         loop {
             tokio::select! {
@@ -75,7 +100,7 @@ impl MainRunner {
                                         continue;
                                     }
                                 };
-                                if !self.peers.contains(&public_key) { 
+                                if !self.peers.contains(&public_key) {
                                     error!("unkown node id {:?}",public_key);
                                     continue;
                                 }
@@ -96,13 +121,17 @@ impl MainRunner {
 
                 // Messges from the service
                 Some(service_message) = self.service_in.recv() => {
-                    error!(" in gossip => {}",service_message.message());
+                    let message = service_message.message();
+                    error!(" in gossip => {}",&message);
+
                     // let mess = service_message.message();
-                    let mess = "woo hoo it seems to work".to_string();
+                    let mess = Bytes::from(message.clone());
+                    self.insert(mess).await?;
+
                     // let r = service_message.reply;
                     // service_transactions.insert(4,r);
                     // println!("{:#?}",service_transactions);
-                    service_message.reply(mess).await;
+                    service_message.reply(message).await;
                 }
 
                 // Cancel token to  bug out.
