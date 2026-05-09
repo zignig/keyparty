@@ -22,6 +22,10 @@ impl KeyClient {
         }
     }
 
+    pub fn connected(&self) -> bool { 
+        self.authed
+    }
+    
     pub async fn signer(&self) -> ServiceClient {
         ServiceClient::connect(self.endpoint.clone(), self.target)
     }

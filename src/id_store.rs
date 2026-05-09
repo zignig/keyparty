@@ -112,8 +112,8 @@ impl Actor {
                 tx.send(()).await.ok();
             }
 
-            IdentityMessage::Remove(remove) => { 
-                let WithChannels { tx,inner,.. } = remove ;
+            IdentityMessage::Remove(remove) => {
+                let WithChannels { tx, inner, .. } = remove;
                 self.store.remove(&inner.key);
                 tx.send(()).await.ok();
             }
@@ -166,7 +166,7 @@ impl IdClient {
         self.inner.rpc(Get { key }).await
     }
 
-    pub async fn new_fren(&self, key: EndpointId,rcan: Rcan<Caps>) {
+    pub async fn new_fren(&self, key: EndpointId, rcan: Rcan<Caps>) {
         match self.inner.rpc(Get { key }).await.unwrap() {
             Some(fren) => {
                 warn!("existing fren => {:#?}", fren);

@@ -1,15 +1,18 @@
 // Basic example of a keyparty client
 
 use clap::Parser;
+
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::{KeyClient, service::irpc::SigStatus};
 use n0_error::{Result, StdResultExt};
+use rand::{Rng, distributions::Alphanumeric};
 use tracing::{debug, error, info, warn};
 // use tracing_subscriber::filter::{LevelFilter, Targets};
 // use tracing_subscriber::prelude::*;
 
 mod config {
     use frost_ed25519::VerifyingKey;
+
     use iroh::{EndpointId, PublicKey, SecretKey};
     use std::path::PathBuf;
 
@@ -77,7 +80,7 @@ mod config {
             self.clone().secret
         }
 
-        pub fn origin(&self) -> Option<VerifyingKey> { 
+        pub fn origin(&self) -> Option<VerifyingKey> {
             self.clone().origin
         }
 
@@ -90,12 +93,6 @@ mod config {
         }
 
         pub fn get_rcan(&self) -> Option<String> {
-            // if let Some(caps_string) = self.rcan.clone() {
-            //     let rc = Caps::decode(caps_string.into_bytes())?;
-            //     return Ok(rc);
-            // } else {
-            //     return Err(anyerr!("failed rcan decode"));
-            // }
             self.rcan.clone()
         }
     }
@@ -173,32 +170,52 @@ async fn main() -> Result<()> {
                 };
             }
 
-            let signer = client.signer().await;
+            if client.connected() {
+                let signer = client.signer().await;
+                // for i in 0..20 {
+                //     println!("{:?}", i);
+                //     let random_string: String = rand::thread_rng()
+                //         .sample_iter(&Alphanumeric)
+                //         .take(20)
+                //         .map(char::from)
+                //         .collect();
 
-            let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
-            std::thread::spawn(move || input_loop(line_tx));
-
-            // broadcast each line we type
-            println!("> messages to sign ");
-            while let Some(text) = line_rx.recv().await {
-                let text = text.trim();
-                info!("{}", text);
-                if text != "" {
-                    let reply = signer.sign(&text).await?;
-                    // info!("data back from the remote signer {:#?}", reply);
-                    match reply {
-                        SigStatus::Sig { sig } => {
-                            println!("Is sig {:#?}", sig);
-                            if let Some(origin) = config.origin() { 
-                                let r = origin.verify(text.as_bytes(), &sig);
-                                print!("result {:#?}",r);
+                //     // 2. Borrow it as a &str
+                //     let random_str: &str = &random_string;
+                //     match signer.sign(&random_str).await?{
+                //         SigStatus::Sig { sig } => {
+                //             info!("{} -- {} -- {:#?}",i,random_str,sig);                            
+                //         },
+                //         SigStatus::SigError { error } => {},
+                //     }
+                // }
+                let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
+                std::thread::spawn(move || input_loop(line_tx));
+                // broadcast each line we type
+                println!("> messages to sign ");
+                while let Some(text) = line_rx.recv().await {
+                    let text = text.trim();
+                    info!("{}", text);
+                    if text != "" {
+                        let reply = signer.sign(&text).await?;
+                        info!("signed");
+                        match reply {
+                            SigStatus::Sig { sig } => {
+                                println!("{:#?}", sig);
+                                if let Some(origin) = config.origin() {
+                                    match origin.verify(text.as_bytes(), &sig) {
+                                        Ok(_) => println!("Signature is good"),
+                                        Err(e) => error!("Error {:#?}", e),
+                                    }
+                                }
                             }
+                            SigStatus::SigError { error } => error!("Signing Error {:#?}", error),
                         }
-                        SigStatus::SigError { error } => error!("Signing Error {:#?}",error),
                     }
                 }
+            } else {
+                error!("not connected");
             }
-
             endpoint.close().await;
         } else {
             info!("no rcan");

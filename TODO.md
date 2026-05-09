@@ -1,11 +1,12 @@
 # Service
 
 1. turn auth into a local rpc
+    1. need to validate the rcan from the id_service
+    1. check rcan capabilities from the id_service
 
 # Next stuff
 
 1. hook up the validator
-1. add external irpc client for signing
 1. send complete transaction back to the gossip with enum of state
 
 # Outstanding stuff 
@@ -35,11 +36,8 @@
 
 Maintaining quorm is harder than it looks.
 
-1. send quorum and lost_quorum to the gossip channel.
-    1. extract the gossip into it's own module and add state
 1. need to use hello messages to watch for node changes.
     1. gossip does this for us
-1. add quorum messages , gained / lost through the gossip channel.
 
 ### Layout
 
@@ -73,6 +71,10 @@ Maintaining quorm is harder than it looks.
 1. new endpoint
 1. rcan auth is working, it's only one layer deep , but seems to be working
 1. **add** defence againt the dark arts.
+1. add external irpc client for signing
+1. send quorum and lost_quorum to the gossip channel.
+    1. extract the gossip into it's own module and add state
+1. add quorum messages , gained / lost through the gossip channel.
 
 
 ## Done move secondary keys into the keygen, 
