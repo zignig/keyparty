@@ -18,7 +18,7 @@ use n0_future::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use crate::service;
+use crate::{service, signing::runner::MainRunner};
 use crate::service::irpc::ServiceMessage;
 use crate::{IdentityApi, cli::Args, config::Config, service::irpc::Reply};
 
@@ -26,6 +26,7 @@ mod auth;
 mod quorum;
 mod signer;
 mod validator;
+mod runner;
 
 use auth::Authenticator;
 
@@ -135,7 +136,7 @@ pub async fn run(
         config.clone(),
         from_signer,
         to_signer,
-        peers,
+        peers.clone(),
         cancel_token.clone(),
     );
 
@@ -143,8 +144,9 @@ pub async fn run(
     tokio::spawn(signer.run());
 
     // Start the gossip interface.
-    tokio::spawn(runner(
-        my_id.clone(),
+    let main_runner = MainRunner::new(
+            my_id.clone(),
+            peers,
         tx.clone(),
         rx,
         from_gossip.clone(),
@@ -152,7 +154,11 @@ pub async fn run(
         service_in,
         secret.clone(),
         cancel_token.clone()
-    ));
+    );
+    
+    // Spawn the main runner for the signer.
+    tokio::spawn(main_runner.run());
+
 
     // Bounce some messages
     tokio::spawn(beacon(tx.clone(), secret.clone()));
@@ -178,80 +184,8 @@ pub async fn run(
     Ok(())
 }
 
-// Gossip runner
-// This shares messages to all participants.
-pub async fn runner(
-    _id: PublicKey,
-    tx: GossipSender,
-    mut rx: GossipReceiver,
-    outgoing: Sender<SigEvents>,
-    mut incoming: Receiver<GossipMessage>,
-    mut service_in: Receiver<ServiceMessage>,
-    secret: SecretKey,
-    cancel_token: CancellationToken
-) -> Result<(), AnyError> {
-    let _service_transactions = BTreeMap::<u64, Reply>::new();
-    // Select on the events
-    loop {
-        tokio::select! {
-            // biased;
-            // Events from the gossip network.
-            event = rx.try_next() => {
-                let event = event?;
-                if let Some(event) = event {
-                    match event {
-                        Event::NeighborUp(public_key) => {
-                            println!("NeighborUp {:?}", public_key);
-                            let _ = outgoing.send(SigEvents { id: public_key, message: GossipMessage::PeerUp}).await;
-                        },
-                        Event::NeighborDown(public_key) => {
-                            println!("NeighborDown {:?}", public_key);
-                            let _ = outgoing.send(SigEvents { id: public_key, message: GossipMessage::PeerDown}).await;
-                        },
-                        Event::Received(message) => {
-                            let (public_key,mess_checked) = match SignedMessage::verify_and_decode(&message.content.to_vec()){
-                                Ok((public_key,sig_mess)) => (public_key,sig_mess),
-                                Err(e) => {
-                                    error!("bad key{:?}",e);
-                                    continue;
-                                }
-                            };
-                            outgoing.send(SigEvents{id : public_key,message : mess_checked.clone()}).await.expect("send to sig failed");
-                            debug!("message {} => {:?}",public_key.fmt_short(),mess_checked);
-                        }
-                        Event::Lagged => println!("Lagged!!"),
-                    }
-                }
-            }
 
-            // Incoming message from signer.
-            Some(signer) = incoming.recv() =>{
-                debug!("SIGNER ==> GOSSIP {:?}",signer);
-                let sig_mess = SignedMessage::sign_and_encode(&secret, &signer)?;
-                let _ = tx.broadcast(sig_mess).await;
-            }
-
-            // Messges from the service
-            Some(service_message) = service_in.recv() => {
-                error!(" in gossip => {}",service_message.message());
-                // let mess = service_message.message();
-                let mess = "woo hoo it seems to work".to_string();
-                // let r = service_message.reply;
-                // service_transactions.insert(4,r);
-                // println!("{:#?}",service_transactions);
-                service_message.reply(mess).await;
-            }
-
-            // Cancel token to  bug out.
-            _ = cancel_token.cancelled() =>  { 
-                info!("Stop the main runner");
-                return Ok(());
-            }
-        }
-    }
-}
-
-// Chuch a hello onto the gossip.
+// Chuck a hello onto the gossip.
 pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
     warn!("start beacon");
     loop {
