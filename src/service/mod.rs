@@ -25,10 +25,12 @@ pub use irpc::ALPN as SERVICE_ALPN;
 pub async fn run(config: Config, id_client: IdClient, service_out: Sender<ServiceMessage>,token: CancellationToken) -> Result<()> {
     info!("run the external service");
     let secret_key = config.get_service_key();
-    println!("service id {}", secret_key.public());
+    let my_id = secret_key.public();
+    println!("service id {}",&my_id);
 
     // Create the authenication sets
-    let (hook, proto) = auth::incoming(id_client.clone());
+
+    let (hook, proto) = auth::incoming(id_client.clone(),my_id);
 
     let rpc = irpc::ServiceActor::new(id_client,service_out);
 

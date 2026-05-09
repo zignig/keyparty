@@ -18,9 +18,9 @@ use rcan::Rcan;
 use std::{str, time::SystemTime};
 use tracing::{debug, error, info, warn};
 
-pub fn incoming(id_client: IdClient) -> (RCanAuth, AuthProtocol) {
+pub fn incoming(id_client: IdClient, id: PublicKey) -> (RCanAuth, AuthProtocol) {
     let rca = RCanAuth::new(id_client.clone());
-    let ap = AuthProtocol::new(id_client);
+    let ap = AuthProtocol::new(id_client, id);
     (rca, ap)
 }
 
@@ -79,11 +79,12 @@ impl EndpointHooks for RCanAuth {
 #[derive(Debug)]
 pub struct AuthProtocol {
     client: IdClient,
+    my_id: PublicKey,
 }
 
 impl AuthProtocol {
-    pub fn new(client: IdClient) -> Self {
-        Self { client }
+    pub fn new(client: IdClient, my_id: PublicKey) -> Self {
+        Self { client, my_id }
     }
 }
 
@@ -103,10 +104,10 @@ impl ProtocolHandler for AuthProtocol {
         match decode {
             Ok(d) => {
                 debug!("{:#?}", &d);
-                match check_rcan(d.clone(), &connection) {
+                match check_rcan(d.clone(), &connection,self.my_id) {
                     Ok(_) => {
                         info!("the rcan works");
-                        self.client.new_fren(connection.remote_id(),d).await;
+                        self.client.new_fren(connection.remote_id(), d).await;
                         send.write(&[1]).await.unwrap();
                     }
                     Err(e) => {
@@ -128,14 +129,18 @@ impl ProtocolHandler for AuthProtocol {
     }
 }
 
-fn check_rcan(rcan: Rcan<Caps>, conn: &Connection) -> Result<(), AnyError> {
+fn check_rcan(rcan: Rcan<Caps>, conn: &Connection,my_id: PublicKey) -> Result<(), AnyError> {
     let time = SystemTime::now();
     if rcan.expires().is_valid_at(time) {
         info!("still valid");
         let pubkey = PublicKey::from_bytes(rcan.audience().as_bytes())?;
         if conn.remote_id() == pubkey {
             info!("remote id good");
-            return Ok(());
+            let target = PublicKey::from_bytes(rcan.issuer().as_bytes())?;
+            if target == my_id { 
+                info!("local is good");
+                return Ok(());
+            }   
         }
     }
     Err(anyerr!("rcan fail"))
