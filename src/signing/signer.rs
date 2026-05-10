@@ -1,5 +1,7 @@
 // This is the task that performs the actual signature
 
+// TODO , rework the signing sequence
+
 use bytes::Bytes;
 use frost::{
     Identifier, SigningPackage,
@@ -147,6 +149,7 @@ impl SignerTask {
             SigEvent::Collect { signature } => {
                 self.signatures.insert(id, signature.clone());
             }
+
             SigEvent::Compare => {}
         };
 
@@ -241,7 +244,8 @@ impl SignerTask {
                         signature: group_signature,
                     })
                     .await?;
-                    self.state = SState::Check;
+                    // self.state = SState::Check;
+                    self.state = SState::Finished;
                 }
             }
 
@@ -253,7 +257,7 @@ impl SignerTask {
                     .all(|key| self.signatures.contains_key(key))
                 {
                     info!("-> finish");
-                    self.send_out(SigEvent::Compare).await?;
+                    // self.send_out(SigEvent::Compare).await?;
                     self.state = SState::Finished;
                 }
             }

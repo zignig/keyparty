@@ -201,6 +201,7 @@ impl QuorumWatcher {
             tx.send((id, event)).await.expect("bad routing");
         } else {
             error!("Missing transaction {}", &event.transaction_id);
+            error!("Event {:#?}",&event.event);
             // return Err(anyerr!("missing transaction"));
         }
         Ok(())

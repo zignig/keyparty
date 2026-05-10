@@ -5,7 +5,7 @@ use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::{KeyClient, service::irpc::SigStatus};
 use n0_error::{Result, StdResultExt};
-use rand::{Rng, distributions::Alphanumeric};
+// use rand::{Rng, distributions::Alphanumeric};
 use tracing::{debug, error, info, warn};
 // use tracing_subscriber::filter::{LevelFilter, Targets};
 // use tracing_subscriber::prelude::*;
@@ -184,7 +184,7 @@ async fn main() -> Result<()> {
                 //     let random_str: &str = &random_string;
                 //     match signer.sign(&random_str).await?{
                 //         SigStatus::Sig { sig } => {
-                //             info!("{} -- {} -- {:#?}",i,random_str,sig);                            
+                //             info!("{} -- {} -- {:#?}",i,random_str,sig);
                 //         },
                 //         SigStatus::SigError { error } => {},
                 //     }
@@ -195,8 +195,8 @@ async fn main() -> Result<()> {
                 println!("> messages to sign ");
                 while let Some(text) = line_rx.recv().await {
                     let text = text.trim();
-                    info!("{}", text);
                     if text != "" {
+                        info!("{}", text);
                         let reply = signer.sign(&text).await?;
                         info!("signed");
                         match reply {
