@@ -1,6 +1,9 @@
 // This is the task that performs the actual signature
 
 // TODO , rework the signing sequence
+// TODO , need to make this so there is a single coordinator
+// TODO , that only runs from the service machine.
+// TODO , no need to run a full signing sequence from all the endpoints
 
 use bytes::Bytes;
 use frost::{
