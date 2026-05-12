@@ -7,7 +7,7 @@ use keyparty::{KeyClient, ServiceClient, service::irpc::SigStatus};
 use n0_error::{Result, StdResultExt};
 use rand::{Rng, distributions::Alphanumeric};
 use tokio::time::Instant;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 // use tracing_subscriber::filter::{LevelFilter, Targets};
 // use tracing_subscriber::prelude::*;
 
@@ -112,7 +112,9 @@ mod cli {
         #[arg(long)]
         pub ticket: Option<ServiceTicket>,
         #[arg(short, long)]
-        pub multi: bool
+        pub multi: bool,
+        #[arg(long, default_value_t = 100)]
+        pub count: i32,
     }
 }
 
@@ -147,7 +149,7 @@ async fn main() -> Result<()> {
     if let Some(target) = config.get_target() {
         // Connect, auth and sign
         let secret_key = config.secret();
-        
+
         if let Some(rcan) = config.get_rcan() {
             let endpoint = Endpoint::builder(presets::N0)
                 .secret_key(secret_key.clone())
@@ -167,7 +169,7 @@ async fn main() -> Result<()> {
                 let signer = client.signer().await;
                 // send 100 random messages
                 if args.multi {
-                    multi(&signer).await?;
+                    multi(&signer,args.count).await?;
                 }
                 let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
                 std::thread::spawn(move || input_loop(line_tx));
@@ -219,8 +221,8 @@ fn input_loop(line_tx: tokio::sync::mpsc::Sender<String>) -> Result<()> {
     }
 }
 
-async fn multi(signer: &ServiceClient) -> Result<()> {
-    for i in 0..100 {
+async fn multi(signer: &ServiceClient, count: i32) -> Result<()> {
+    for i in 0..count {
         // println!("{:?}", i);
         let start = Instant::now();
         let random_string: String = rand::thread_rng()

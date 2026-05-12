@@ -1,3 +1,10 @@
+# Outstanding stuff 
+
+1. u64 as time stamp seems to collide, perhaps UUID after all.
+1. check TODOs
+1. clean up logging
+1. fix id_client and rcan setup.
+
 # Service
 
 1. turn auth into a local rpc
@@ -8,9 +15,6 @@
 
 1. hook up the validator
 1. send complete transaction back to the gossip with enum of state
-
-# Outstanding stuff 
-
 
 
 ## Some todo stuff 
@@ -24,20 +28,10 @@
 
 ## Signing
 
-- itegrate chat ?  # no
 - show/process message and ask Y/N from the endpoint before signing
     - itegrate into validator
-- deal with large messages (4Kb on gossip messages) , ?integrate blob distribution.
-    - not yet
 - check that there is quorum (min shares) before proceeding
     - this needs to be be a better system , separate timed task.
-
-## quorum 
-
-Maintaining quorm is harder than it looks.
-
-1. need to use hello messages to watch for node changes.
-    1. gossip does this for us
 
 ### Layout
 
@@ -85,3 +79,9 @@ Maintaining quorm is harder than it looks.
 1. map the identifiers on the _secondary_ keys to the primary keys.
 1. use this map for the key generation.
 1. then the signing gossip can just use the secondary keys straight up
+
+## quorum 
+
+Maintaining quorm is harder than it looks.
+1. need to use hello messages to watch for node changes.
+    1. gossip does this for us

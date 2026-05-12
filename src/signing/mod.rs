@@ -1,7 +1,7 @@
 // Signing can be done with a gossip channel
 
 use bytes::Bytes;
-use frost_ed25519::{Signature as FrostSig, round1::SigningCommitments, round2::SignatureShare};
+use frost_ed25519::{round1::SigningCommitments, round2::SignatureShare};
 use std::time::Duration;
 
 use iroh::{Endpoint, PublicKey, SecretKey, Signature, endpoint::presets, protocol::RouterBuilder};
@@ -33,10 +33,6 @@ pub const BEACON_DURATION: u64 = 5u64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SigEvent {
-    // TODO This need a boolean flag for the local send
-    // the gossip has it false, don't generate the signature
-    // on all the other nodes, just swap shares 
-    // should reduce the round time.
     Start { sig_message: Bytes },
     Round1 { commitment: SigningCommitments },
     Round2 { share: SignatureShare },

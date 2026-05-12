@@ -1,10 +1,5 @@
 // This is the task that performs the actual signature
 
-// TODO , rework the signing sequence
-// TODO , need to make this so there is a single coordinator
-// TODO , that only runs from the service machine.
-// TODO , no need to run a full signing sequence from all the endpoints
-
 use bytes::Bytes;
 use frost::{
     Identifier, SigningPackage,
@@ -117,7 +112,6 @@ impl SignerTask {
         let (id, mess) = event;
         let mut rng = frost_ed25519::rand_core::OsRng;
 
-        // TODO finish the signing sequence
         // match incoming events
         match &mess.event {
             SigEvent::Start { .. } => {
@@ -137,14 +131,23 @@ impl SignerTask {
                     }
                 }
             }
-            // TODO limit these to known ids
+
             SigEvent::Round1 { commitment } => {
-                self.commitments.insert(id, commitment.to_owned());
+                if self.nodes.contains(&id) {
+                    self.commitments.insert(id, commitment.to_owned());
+                } else {
+                    error!("Unknown nodeid {}", id);
+                    return Err(anyerr!("Unknown nodeid {}, round 1 ", id).into());
+                }
             }
 
-            // TODO limit these to known ids
             SigEvent::Round2 { share } => {
-                self.signing_shares.insert(id, share.clone());
+                if self.nodes.contains(&id) {
+                    self.signing_shares.insert(id, share.clone());
+                } else {
+                    error!("Unknown nodeid {}", id);
+                    return Err(anyerr!("Unknown nodeid {}, round 1 ", id).into());
+                }
             }
         };
 
@@ -230,8 +233,7 @@ impl SignerTask {
                         .clone()
                         .ok_or("missing public pacakge)")?;
 
-                    // TODO errors here for some reason
-                    // change into a Result and error
+                    //  TODO change into a Result and error
                     self.signature =
                         match frost::aggregate(&signing_package, &sig_share, &public_package) {
                             Ok(sig) => Some(sig),
