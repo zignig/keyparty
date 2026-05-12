@@ -31,8 +31,6 @@ enum SState {
     Start,
     Round1,
     Round2,
-    Check,
-    Finished,
     Fail,
 }
 
@@ -58,7 +56,7 @@ pub struct SignerTask {
     signing_shares: BTreeMap<PublicKey, SignatureShare>,
 
     // output
-    signatures: BTreeMap<PublicKey, Signature>,
+    signature: Option<Signature>,
 }
 
 impl SignerTask {
@@ -74,7 +72,7 @@ impl SignerTask {
         public_package: Option<PublicKeyPackage>,
         nodes: BTreeSet<PublicKey>,
     ) -> (Sender<(PublicKey, TransMessage)>, Self) {
-        let (tx, rx) = tokio::sync::mpsc::channel::<(PublicKey, TransMessage)>(5);
+        let (tx, rx) = tokio::sync::mpsc::channel::<(PublicKey, TransMessage)>(30);
 
         let mut id_map: BTreeMap<PublicKey, Identifier> = BTreeMap::new();
         for node in nodes.iter() {
@@ -96,7 +94,7 @@ impl SignerTask {
             commitments: Default::default(),
             signing_package: None,
             signing_shares: Default::default(),
-            signatures: Default::default(),
+            signature: None,
             id_map,
         };
         (tx, sel)
@@ -147,13 +145,9 @@ impl SignerTask {
             // TODO limit these to known ids
             SigEvent::Round2 { share } => {
                 self.signing_shares.insert(id, share.clone());
-            }
-
-            SigEvent::Collect { signature } => {
-                self.signatures.insert(id, signature.clone());
-            }
-
-            SigEvent::Compare => {}
+            } // SigEvent::Collect { signature } => {
+              //     self.signatures.insert(id, signature.clone());
+              // }
         };
 
         //
@@ -237,36 +231,19 @@ impl SignerTask {
                         .public_package
                         .clone()
                         .ok_or("missing public pacakge)")?;
-                    let group_signature =
-                        frost::aggregate(&signing_package, &sig_share, &public_package)
-                            .expect("bad group signature");
-                    // info!(" WOO HOO !!! ---- {:#?}", group_signature);
 
-                    self.signatures.insert(self.my_id, group_signature);
-                    self.send_out(SigEvent::Collect {
-                        signature: group_signature,
-                    })
-                    .await?;
-                    // self.state = SState::Check;
-                    self.state = SState::Finished;
+                    // TODO errors here for some reason
+                    // change into a Result and error
+                    self.signature =
+                        match frost::aggregate(&signing_package, &sig_share, &public_package) {
+                            Ok(sig) => Some(sig),
+                            Err(error) => {
+                                error!("{:#?}", error);
+                                return Err(anyerr!(error));
+                            }
+                        };
+                    return Ok(true);
                 }
-            }
-
-            SState::Check => {
-                info!("[signer] Check");
-                if self
-                    .nodes
-                    .iter()
-                    .all(|key| self.signatures.contains_key(key))
-                {
-                    info!("-> finish");
-                    // self.send_out(SigEvent::Compare).await?;
-                    self.state = SState::Finished;
-                }
-            }
-
-            SState::Finished => {
-                return Ok(true);
             }
 
             SState::Fail => {
@@ -279,7 +256,7 @@ impl SignerTask {
 
     // Runner loop for the signer
     pub async fn run(mut self) -> Result<(i64, Signature), (i64, AnyError)> {
-        warn!(" Starting Signer Task {:#?}", &self.state);
+        debug!(" Starting Signer Task {:#?}", &self.state);
 
         let timeout = tokio::time::sleep(SignerTask::TIME_OUT);
         tokio::pin!(timeout);
@@ -291,7 +268,7 @@ impl SignerTask {
                     match self.handle_event(event).await {
 
                         Ok(fin) => if fin {
-                                if let Some(signature) = self.signatures.get(&self.my_id){
+                                if let Some(signature) = self.signature{
                                     return Ok((self.transaction_id,signature.clone()));
                                 }
                             },

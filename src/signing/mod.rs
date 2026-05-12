@@ -36,8 +36,7 @@ pub enum SigEvent {
     Start { sig_message: Bytes },
     Round1 { commitment: SigningCommitments },
     Round2 { share: SignatureShare },
-    Collect { signature: FrostSig },
-    Compare,
+    // Collect { signature: FrostSig },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -101,7 +100,7 @@ pub async fn run(config: Config, _args: Args, run_service: bool) -> Result<()> {
         .spawn();
 
     // messages from the service
-    let (service_out, service_in) = tokio::sync::mpsc::channel::<ServiceMessage>(10);
+    let (service_out, service_in) = tokio::sync::mpsc::channel::<ServiceMessage>(50);
     // if the service flag is set , create  the service node
     if run_service {
         warn!("Start  the external service");
@@ -130,8 +129,8 @@ pub async fn run(config: Config, _args: Args, run_service: bool) -> Result<()> {
     let (tx, rx) = goss.split();
 
     // Messages between actors
-    let (from_gossip, to_signer) = tokio::sync::mpsc::channel::<SigEvents>(10);
-    let (from_signer, to_gossip) = tokio::sync::mpsc::channel::<GossipMessage>(10);
+    let (from_gossip, to_signer) = tokio::sync::mpsc::channel::<SigEvents>(50);
+    let (from_signer, to_gossip) = tokio::sync::mpsc::channel::<GossipMessage>(50);
 
     // Create the signer
     let signer = quorum::QuorumWatcher::new(

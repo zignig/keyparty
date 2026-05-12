@@ -59,7 +59,7 @@ impl MainRunner {
 
     // Insert a blob to sign onto the network.
     pub async fn insert(&self, message: Bytes) -> Result<i64> {
-        warn!("insert message ");
+        debug!("Insert Message to the signer ");
         let transaction_id = now();
         let gm = GossipMessage::Event {
             message: TransMessage {

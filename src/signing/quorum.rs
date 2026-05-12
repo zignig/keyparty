@@ -10,8 +10,11 @@ use n0_error::AnyError;
 use n0_error::Result;
 use n0_future::FuturesUnordered;
 use n0_future::StreamExt;
+
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
+
 use tracing::error;
 use tracing::{debug, info, warn};
 
@@ -81,6 +84,14 @@ impl QuorumWatcher {
         }
     }
 
+    fn out(&self, message: GossipMessage) {
+        match self.outgoing.try_send(message) {
+            Ok(_) => {},
+            Err(TrySendError::Full(_)) => error!("outgoing full"),
+            Err(TrySendError::Closed(_)) => error!("outgoing disconnected"),
+        }
+    }
+
     // Need a diagram of the signing flow
     async fn handle_event(&mut self, event: SigEvents) -> Result<()> {
         // Match for state machine
@@ -98,7 +109,8 @@ impl QuorumWatcher {
                 warn!("quorum lost!");
                 self.state = QuorumSteps::Preparty;
                 // Tell the main runner that we have lost quorum
-                self.outgoing.send(GossipMessage::QuorumDown).await.unwrap();
+                // self.outgoing.send(GossipMessage::QuorumDown).await.unwrap();
+                self.out(GossipMessage::QuorumDown);
                 return Ok(());
             }
         }
@@ -107,10 +119,7 @@ impl QuorumWatcher {
             // new peer , say hello
             // this helps with getting quorum
             warn!("{:#?}", &self.online_peers);
-            let _ = self
-                .outgoing
-                .send(GossipMessage::Hello { timestamp: now() })
-                .await;
+            self.out(GossipMessage::Hello { timestamp: now() });
         }
 
         match &self.state {
@@ -131,7 +140,8 @@ impl QuorumWatcher {
                     info!("Peers {:?}", self.online_peers);
                     self.state = QuorumSteps::Quorum;
                     // Tell the main runner that we have quorum
-                    self.outgoing.send(GossipMessage::QuorumUp).await.unwrap();
+                    self.out(GossipMessage::QuorumUp);
+                    // self.outgoing.send(GossipMessage::QuorumUp).await.unwrap();
                 };
             }
 
@@ -201,7 +211,7 @@ impl QuorumWatcher {
             tx.send((id, event)).await.expect("bad routing");
         } else {
             error!("Missing transaction {}", &event.transaction_id);
-            error!("Event {:#?}",&event.event);
+            error!("Event {:#?}", &event.event);
             // return Err(anyerr!("missing transaction"));
         }
         Ok(())
@@ -236,7 +246,8 @@ impl QuorumWatcher {
                                 transaction_id,
                                 status: SigStatus::Sig {sig: signature}
                             };
-                            self.outgoing.send(gm).await.unwrap();
+                            self.out(gm);
+                            // self.outgoing.send(gm).await.unwrap();
                         }
                         Err((transaction_id,err)) => {
                             error!("transaction {} errored ",&transaction_id);
@@ -246,7 +257,8 @@ impl QuorumWatcher {
                                 transaction_id,
                                 status : SigStatus::SigError { error: err.to_string() }
                             };
-                            self.outgoing.send(gm).await.unwrap();
+                            self.out(gm);
+                            // self.outgoing.send(gm).await.unwrap();
                         }
                     }
                 }

@@ -5,7 +5,8 @@ use clap::Parser;
 use iroh::{Endpoint, endpoint::presets};
 use keyparty::{KeyClient, service::irpc::SigStatus};
 use n0_error::{Result, StdResultExt};
-// use rand::{Rng, distributions::Alphanumeric};
+use rand::{Rng, distributions::Alphanumeric};
+use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 // use tracing_subscriber::filter::{LevelFilter, Targets};
 // use tracing_subscriber::prelude::*;
@@ -172,23 +173,30 @@ async fn main() -> Result<()> {
 
             if client.connected() {
                 let signer = client.signer().await;
-                // for i in 0..20 {
-                //     println!("{:?}", i);
-                //     let random_string: String = rand::thread_rng()
-                //         .sample_iter(&Alphanumeric)
-                //         .take(20)
-                //         .map(char::from)
-                //         .collect();
+                if true {
+                    for i in 0..100 {
+                        // println!("{:?}", i);
+                        let start = Instant::now();
+                        let random_string: String = rand::thread_rng()
+                            .sample_iter(&Alphanumeric)
+                            .take(20)
+                            .map(char::from)
+                            .collect();
 
-                //     // 2. Borrow it as a &str
-                //     let random_str: &str = &random_string;
-                //     match signer.sign(&random_str).await?{
-                //         SigStatus::Sig { sig } => {
-                //             info!("{} -- {} -- {:#?}",i,random_str,sig);
-                //         },
-                //         SigStatus::SigError { error } => {},
-                //     }
-                // }
+                        // 2. Borrow it as a &str
+                        let random_str: &str = &random_string;
+                        match signer.sign(&random_str).await? {
+                            SigStatus::Sig { sig } => {
+                                info!("{} -- {} -- {:#?}", i, random_str, sig);
+                            }
+                            SigStatus::SigError { error } => {
+                                error!("{}", error);
+                            }
+                        }
+                        let duration = start.elapsed();
+                        print!("\nDuration = {} ms\n", duration.as_millis());
+                    }
+                }
                 let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
                 std::thread::spawn(move || input_loop(line_tx));
                 // broadcast each line we type
@@ -196,8 +204,11 @@ async fn main() -> Result<()> {
                 while let Some(text) = line_rx.recv().await {
                     let text = text.trim();
                     if text != "" {
+                        let start = Instant::now();
                         info!("{}", text);
                         let reply = signer.sign(&text).await?;
+                        let duration = start.elapsed();
+                        print!("\nDuration = {} ms\n", duration.as_millis());
                         info!("signed");
                         match reply {
                             SigStatus::Sig { sig } => {
