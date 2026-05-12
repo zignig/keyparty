@@ -250,7 +250,7 @@ impl QuorumWatcher {
                             // self.outgoing.send(gm).await.unwrap();
                         }
                         Err((transaction_id,err)) => {
-                            error!("transaction {} errored ",&transaction_id);
+                            error!("transaction {} error {} ",&transaction_id,err);
                             error!("{:#?}",err);
                             self.transactions.remove(&transaction_id);
                             let gm = GossipMessage::SigStatus{
