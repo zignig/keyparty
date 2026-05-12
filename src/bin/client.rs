@@ -3,7 +3,7 @@
 use clap::Parser;
 
 use iroh::{Endpoint, endpoint::presets};
-use keyparty::{KeyClient, service::irpc::SigStatus};
+use keyparty::{KeyClient, ServiceClient, service::irpc::SigStatus};
 use n0_error::{Result, StdResultExt};
 use rand::{Rng, distributions::Alphanumeric};
 use tokio::time::Instant;
@@ -111,6 +111,8 @@ mod cli {
         pub config: PathBuf,
         #[arg(long)]
         pub ticket: Option<ServiceTicket>,
+        #[arg(short, long)]
+        pub multi: bool
     }
 }
 
@@ -145,57 +147,27 @@ async fn main() -> Result<()> {
     if let Some(target) = config.get_target() {
         // Connect, auth and sign
         let secret_key = config.secret();
+        
         if let Some(rcan) = config.get_rcan() {
             let endpoint = Endpoint::builder(presets::N0)
                 .secret_key(secret_key.clone())
                 .bind()
                 .await?;
+
             let _ = endpoint.online().await;
+
             // create the key client
             info!("create an endpoint and connect to {}", target.fmt_short());
             let mut client = KeyClient::new(endpoint.clone(), target, rcan);
-            warn!("send auth");
-            let mut exit = false;
-            let mut counter = 0;
-            const MAX_FAIL: i32 = 5;
-            while !exit {
-                match client.login().await {
-                    Ok(_) => exit = true,
-                    Err(e) => {
-                        counter += 1;
-                        if counter == MAX_FAIL {
-                            error!("{:#?} - {} ", e, counter);
-                            return Ok(());
-                        }
-                    }
-                };
-            }
+
+            info!("send auth");
+            client.login().await?;
 
             if client.connected() {
                 let signer = client.signer().await;
-                if true {
-                    for i in 0..100 {
-                        // println!("{:?}", i);
-                        let start = Instant::now();
-                        let random_string: String = rand::thread_rng()
-                            .sample_iter(&Alphanumeric)
-                            .take(20)
-                            .map(char::from)
-                            .collect();
-
-                        // 2. Borrow it as a &str
-                        let random_str: &str = &random_string;
-                        match signer.sign(&random_str).await? {
-                            SigStatus::Sig { sig } => {
-                                info!("{} -- {} -- {:#?}", i, random_str, sig);
-                            }
-                            SigStatus::SigError { error } => {
-                                error!("{}", error);
-                            }
-                        }
-                        let duration = start.elapsed();
-                        print!("\nDuration = {} ms\n", duration.as_millis());
-                    }
+                // send 100 random messages
+                if args.multi {
+                    multi(&signer).await?;
                 }
                 let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
                 std::thread::spawn(move || input_loop(line_tx));
@@ -208,8 +180,8 @@ async fn main() -> Result<()> {
                         info!("{}", text);
                         let reply = signer.sign(&text).await?;
                         let duration = start.elapsed();
+
                         print!("\nDuration = {} ms\n", duration.as_millis());
-                        info!("signed");
                         match reply {
                             SigStatus::Sig { sig } => {
                                 println!("{:#?}", sig);
@@ -234,7 +206,6 @@ async fn main() -> Result<()> {
     } else {
         println!("No target , need a ticket issued to work.")
     }
-
     Ok(())
 }
 
@@ -246,4 +217,30 @@ fn input_loop(line_tx: tokio::sync::mpsc::Sender<String>) -> Result<()> {
         line_tx.blocking_send(buffer.clone()).anyerr()?;
         buffer.clear();
     }
+}
+
+async fn multi(signer: &ServiceClient) -> Result<()> {
+    for i in 0..100 {
+        // println!("{:?}", i);
+        let start = Instant::now();
+        let random_string: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(20)
+            .map(char::from)
+            .collect();
+
+        // 2. Borrow it as a &str
+        let random_str: &str = &random_string;
+        match signer.sign(&random_str).await? {
+            SigStatus::Sig { sig } => {
+                info!("{} -- {} -- {:#?}", i, random_str, sig);
+            }
+            SigStatus::SigError { error } => {
+                error!("{}", error);
+            }
+        }
+        let duration = start.elapsed();
+        print!("\nDuration = {} ms\n", duration.as_millis());
+    }
+    Ok(())
 }

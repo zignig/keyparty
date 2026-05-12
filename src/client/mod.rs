@@ -3,7 +3,8 @@
 use crate::{ServiceClient, service::AUTH_ALPN};
 use anyhow::Result;
 use iroh::{Endpoint, EndpointId};
-use tracing::{debug, info, warn};
+use n0_error::{AnyError, anyerr};
+use tracing::{debug, error, info, warn};
 
 pub struct KeyClient {
     endpoint: Endpoint,
@@ -22,15 +23,33 @@ impl KeyClient {
         }
     }
 
-    pub fn connected(&self) -> bool { 
+    pub fn connected(&self) -> bool {
         self.authed
     }
-    
+
     pub async fn signer(&self) -> ServiceClient {
         ServiceClient::connect(self.endpoint.clone(), self.target)
     }
 
-    pub async fn login(&mut self) -> Result<u8> {
+    // multi try login
+    pub async fn login(&mut self) -> Result<(), AnyError> {
+        let mut counter = 0;
+        const MAX_FAIL: i32 = 5;
+        loop {
+            match self.auth().await {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    counter += 1;
+                    if counter == MAX_FAIL {
+                        error!("{:#?} - {} ", e, counter);
+                        return Err(e.into());
+                    }
+                }
+            };
+        }
+    }
+
+    pub async fn auth(&mut self) -> Result<()> {
         debug!("endpoint auth send {}", self.target.fmt_short());
         let conn = self.endpoint.connect(self.target, AUTH_ALPN).await?;
 
@@ -46,14 +65,17 @@ impl KeyClient {
         send.finish()?;
 
         // get the response
-        let msg = recv.read_to_end(10).await?;
+        let msg = recv.read_to_end(2).await?;
         warn!("reply message {:?}", msg);
         if msg.len() == 1 {
-            debug!("client is authenticated");
-            self.authed = true;
-            return Ok(msg[0]);
+            if msg[0] == 1 { 
+                self.authed = true;
+                return Ok(())
+            } else { 
+                return Err(anyerr!("auth fuled").into())
+            }
         }
         conn.close(1u8.into(), b"finished");
-        Ok(0)
+        Err(anyerr!("auth failed").into())
     }
 }

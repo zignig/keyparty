@@ -145,9 +145,7 @@ impl SignerTask {
             // TODO limit these to known ids
             SigEvent::Round2 { share } => {
                 self.signing_shares.insert(id, share.clone());
-            } // SigEvent::Collect { signature } => {
-              //     self.signatures.insert(id, signature.clone());
-              // }
+            }
         };
 
         //
