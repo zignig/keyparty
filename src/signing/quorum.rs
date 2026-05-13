@@ -240,14 +240,13 @@ impl QuorumWatcher {
                     debug!("task finish {:#?}",&val);
                     match val {
                         Ok((transaction_id,signature)) => {
-                            info!("transaction {} finished",&transaction_id);
+                            debug!("transaction {} finished",&transaction_id);
                             self.transactions.remove(&transaction_id);
                             let gm = GossipMessage::SigStatus {
                                 transaction_id,
                                 status: SigStatus::Sig {sig: signature}
                             };
                             self.out(gm);
-                            // self.outgoing.send(gm).await.unwrap();
                         }
                         Err((transaction_id,err)) => {
                             error!("transaction {} error {} ",&transaction_id,err);
@@ -258,7 +257,6 @@ impl QuorumWatcher {
                                 status : SigStatus::SigError { error: err.to_string() }
                             };
                             self.out(gm);
-                            // self.outgoing.send(gm).await.unwrap();
                         }
                     }
                 }

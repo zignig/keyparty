@@ -1,6 +1,6 @@
 // The main runner for the signing process
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, f32::MAX};
 
 use bytes::Bytes;
 use iroh::{PublicKey, SecretKey};
@@ -13,7 +13,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     service::irpc::{Reply, ServiceMessage, SigStatus},
-    signing::{GossipMessage, SigEvent, SigEvents, SignedMessage, TransMessage, now},
+    signing::{GossipMessage, SigEvent, SigEvents, SignedMessage, TransMessage},
 };
 
 pub struct MainRunner {
@@ -60,7 +60,8 @@ impl MainRunner {
     // Insert a blob to sign onto the network.
     pub async fn insert(&self, message: Bytes) -> Result<i64> {
         debug!("Insert Message to the signer ");
-        let transaction_id = now();
+        let transaction_id: i64 = new_rand::random_range(0..std::i64::MAX);
+
         let gm = GossipMessage::Event {
             message: TransMessage {
                 transaction_id,
@@ -158,7 +159,7 @@ impl MainRunner {
                                     
                                     // push the message into the signing system
                                     let transaction_id = self.insert(mess).await?;
-                                    info!("tr_id {}",transaction_id);
+                                    debug!("tr_id {}",transaction_id);
                                     let reply = service_message.reply;
                                     self.transaction_map.insert(transaction_id,reply);
                                 } else { 

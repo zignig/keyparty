@@ -111,10 +111,8 @@ mod cli {
         pub config: PathBuf,
         #[arg(long)]
         pub ticket: Option<ServiceTicket>,
-        #[arg(short, long)]
-        pub multi: bool,
-        #[arg(long, default_value_t = 100)]
-        pub count: i32,
+        #[arg(long)]
+        pub count: Option<i32>,
     }
 }
 
@@ -168,8 +166,8 @@ async fn main() -> Result<()> {
             if client.connected() {
                 let signer = client.signer().await;
                 // send 100 random messages
-                if args.multi {
-                    multi(&signer,args.count).await?;
+                if let Some(count) = args.count {
+                    multi(&signer,count).await?;
                 }
                 let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
                 std::thread::spawn(move || input_loop(line_tx));
@@ -227,7 +225,7 @@ async fn multi(signer: &ServiceClient, count: i32) -> Result<()> {
         let start = Instant::now();
         let random_string: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
-            .take(20)
+            .take(200)
             .map(char::from)
             .collect();
 

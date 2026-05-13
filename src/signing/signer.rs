@@ -115,7 +115,7 @@ impl SignerTask {
         // match incoming events
         match &mess.event {
             SigEvent::Start { .. } => {
-                info!("{} - {:}", self.transaction_id, self.my_id.fmt_short());
+                debug!("{} - {:}", self.transaction_id, self.my_id.fmt_short());
                 match &self.key_package {
                     Some(key_package) => {
                         let (nonce, commitment) =
@@ -169,7 +169,7 @@ impl SignerTask {
                     .iter()
                     .all(|key| self.commitments.contains_key(key))
                 {
-                    warn!("All commitments");
+                    debug!("All commitments");
                     // Remap to identifiers and create the signing pacakage
                     let mut id_commitments: BTreeMap<Identifier, SigningCommitments> =
                         Default::default();
@@ -215,7 +215,7 @@ impl SignerTask {
                     .iter()
                     .all(|key| self.signing_shares.contains_key(key))
                 {
-                    warn!("Have all the shares");
+                    debug!("Have all the shares");
                     // get signing package
                     let signing_package =
                         self.signing_package.clone().ok_or("missing sig pacakge")?;

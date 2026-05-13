@@ -1,8 +1,8 @@
 # Outstanding stuff 
 
-1. u64 as time stamp seems to collide, perhaps UUID after all.
+1. u64 as time stamp seems to collide, perhaps UUID after all. - random i64 works fine.
 1. check TODOs
-1. clean up logging
+1. clean up logging -- nearly.
 1. fix id_client and rcan setup.
 
 # Service
