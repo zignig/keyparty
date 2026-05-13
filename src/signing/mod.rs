@@ -114,7 +114,6 @@ pub async fn run(config: Config, _args: Args, run_service: bool) -> Result<()> {
     }
 
     // Gossip bits
-    // TODO fix this topic , this should be the public key.
     let topic: [u8; 32] = match config.public_key() {
         Some(topic) => topic.serialize().unwrap().try_into().expect("bad decode"),
         None => [5; 32],
