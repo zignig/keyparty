@@ -15,6 +15,7 @@ pub struct Config {
     public_package: Option<String>,
 
     verify_key: Option<VerifyingKey>,
+    service: Option<bool>,
     max: u16,
     min: u16,
 }
@@ -52,6 +53,7 @@ impl Config {
             key_package: None,
             public_package: None,
             verify_key: None,
+            service: None,
             max: 3,
             min: 2,
         };

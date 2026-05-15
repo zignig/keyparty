@@ -76,9 +76,17 @@ impl ServiceActor {
 
 impl ProtocolHandler for ServiceActor {
     async fn accept(&self, conn: iroh::endpoint::Connection) -> Result<(), AcceptError> {
-        if let Some(fren) = self.id_client.get(conn.remote_id()).await.unwrap() {
-            info!("{:?}", fren);
-        }
+        // if let Some(fren) = self.id_client.get(conn.remote_id()).await.unwrap() {
+        // info!("{:?}", fren);
+        // }
+        let id = conn.remote_id();
+        if self.id_client.check(id).await.expect("rcan expired") {
+            info!("rcan good for {}",id.fmt_short());
+        }else { 
+            conn.close(1u32.into(), b"invalid message");
+            return Ok(());
+        };
+
         while let Some(msg) = read_request::<SignerProtocol>(&conn).await? {
             match msg {
                 SigningMessage::ToSign(msg) => {
@@ -93,6 +101,7 @@ impl ProtocolHandler for ServiceActor {
                 }
             }
         }
+        info!("Client {} disconnectd", conn.remote_id().fmt_short());
         Ok(())
     }
 }

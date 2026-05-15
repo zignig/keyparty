@@ -89,6 +89,7 @@ impl Caps {
         let audience = target.as_verifying_key();
         let can = Rcan::issuing_builder(&issuer, audience, self.clone())
             .sign(Expires::valid_for(Duration::from_mins(60 * 24 * 30)));
+            // .sign(Expires::valid_for(Duration::from_secs(120)));            
         Ok(can)
     }
 

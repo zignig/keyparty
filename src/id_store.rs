@@ -1,13 +1,13 @@
 // A cache of the rcan authenticated endpoints.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::SystemTime};
 
 use iroh::EndpointId;
 use irpc::{Client, WithChannels, channel::oneshot, rpc_requests};
 use rcan::Rcan;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::service::caps::Caps;
 
@@ -62,6 +62,11 @@ struct Set {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct Check {
+    key: EndpointId,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct List;
 
 impl From<(EndpointId, Fren)> for Set {
@@ -79,6 +84,8 @@ enum StorageProtocol {
     Remove(Remove),
     #[rpc(tx=oneshot::Sender<()>)]
     Set(Set),
+    #[rpc(tx=oneshot::Sender<bool>)]
+    Check(Check),
     #[rpc(tx=oneshot::Sender<Vec<Fren>>)]
     List(List),
 }
@@ -116,6 +123,27 @@ impl Actor {
                 let WithChannels { tx, inner, .. } = remove;
                 self.store.remove(&inner.key);
                 tx.send(()).await.ok();
+            }
+
+            IdentityMessage::Check(check) => {
+                let WithChannels { tx,inner , .. } = check;
+                let is_good = match self.store.get(&inner.key) { 
+                    Some(fren) => {
+                        // Check to see if the rbac is still valid
+                        let mut status = false;
+                        if let Some(rcan) = fren.rcan.clone() { 
+                            let time = SystemTime::now();
+                            if rcan.expires().is_valid_at(time) {
+                                status = true;
+                            } else { 
+                                status = false;
+                            }
+                        }
+                        status
+                    }
+                    None => false
+                };
+                tx.send(is_good).await.ok();
             }
 
             IdentityMessage::List(list) => {
@@ -162,14 +190,14 @@ pub struct IdClient {
 
 impl IdClient {
     pub async fn get(&self, key: EndpointId) -> irpc::Result<Option<Fren>> {
-        info!("get {} ", key);
+        debug!("get id {} ", key);
         self.inner.rpc(Get { key }).await
     }
 
     pub async fn new_fren(&self, key: EndpointId, rcan: Rcan<Caps>) {
         match self.inner.rpc(Get { key }).await.unwrap() {
             Some(fren) => {
-                warn!("existing fren => {:#?}", fren);
+                debug!("existing fren => {:#?}", fren);
                 return;
             }
             None => {
@@ -180,6 +208,10 @@ impl IdClient {
         }
     }
 
+    pub async fn check(&self,key: EndpointId) -> irpc::Result<bool> { 
+        self.inner.rpc(Check { key }).await
+    }
+    
     pub async fn set(&self, key: EndpointId, value: Fren) -> irpc::Result<()> {
         self.inner.rpc(Set { key, value }).await
     }

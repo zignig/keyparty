@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 // s
 
@@ -31,7 +31,7 @@ enum SState {
 
 pub struct SignerTask {
     my_id: PublicKey,
-    transaction_id: i64,
+    transaction_id: u64,
     message: Bytes,
     state: SState,
     incoming: Receiver<(PublicKey, TransMessage)>,
@@ -60,7 +60,7 @@ impl SignerTask {
     // Make a new one
     pub async fn new(
         my_id: PublicKey,
-        transaction_id: i64,
+        transaction_id: u64,
         message: Bytes,
         outgoing: Sender<GossipMessage>,
         key_package: Option<KeyPackage>,
@@ -255,7 +255,7 @@ impl SignerTask {
     }
 
     // Runner loop for the signer
-    pub async fn run(mut self) -> Result<(i64, Signature), (i64, AnyError)> {
+    pub async fn run(mut self) -> Result<(u64, Signature), (u64, AnyError)> {
         debug!(" Starting Signer Task {:#?}", &self.state);
 
         let timeout = tokio::time::sleep(SignerTask::TIME_OUT);

@@ -29,6 +29,8 @@ distributed key generation sequence.
 
 It will then save primary and secondary keys endpoint keys , with keymatter into frosty.toml.
 
+## Issue a service key
+
 
 ## TODO 
 

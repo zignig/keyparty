@@ -41,7 +41,7 @@ pub enum SigEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TransMessage {
-    transaction_id: i64,
+    transaction_id: u64,
     event: SigEvent,
 }
 
@@ -60,7 +60,7 @@ pub enum GossipMessage {
     // These stops at the signer exit point, and
     // don't go into the actual gossip network
     SigStatus {
-        transaction_id: i64,
+        transaction_id: u64,
         status: SigStatus,
     },
     QuorumUp,
@@ -103,7 +103,7 @@ pub async fn run(config: Config, _args: Args, run_service: bool) -> Result<()> {
     let (service_out, service_in) = tokio::sync::mpsc::channel::<ServiceMessage>(50);
     // if the service flag is set , create  the service node
     if run_service {
-        warn!("Start  the external service");
+        info!("Start the external service");
         let token = cancel_token.clone();
         tokio::spawn(service::run(
             config.clone(),
@@ -180,7 +180,7 @@ pub async fn run(config: Config, _args: Args, run_service: bool) -> Result<()> {
 
 // Chuck a hello onto the gossip.
 pub async fn beacon(tx: GossipSender, secret_key: SecretKey) -> Result<()> {
-    warn!("start beacon");
+    info!("Start beacon");
     loop {
         let message = GossipMessage::Hello {
             timestamp: chrono::Utc::now().timestamp_millis(),

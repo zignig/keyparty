@@ -1,6 +1,6 @@
 // rcan based auth system.
 
-pub const ALPN: &[u8] = b"liminal/auth/0";
+pub const ALPN: &[u8] = b"keyparty/auth/0";
 
 use crate::{
     id_store::IdClient,
@@ -56,13 +56,12 @@ impl EndpointHooks for RCanAuth {
             str::from_utf8(&alpn).unwrap()
         );
 
+        // Allow anyone to access the auth
         if alpn == ALPN {
-            info!("auth request , allow from anywhere");
             return AfterHandshakeOutcome::Accept;
         }
         match self.client.get(id).await.unwrap() {
             Some(fren) => {
-                info!("A fren !!!  {:#?}", fren);
                 return AfterHandshakeOutcome::Accept;
             }
             None => {
@@ -94,10 +93,8 @@ impl ProtocolHandler for AuthProtocol {
             "auth connection from {:}",
             connection.remote_id().fmt_short()
         );
-        warn!("open bidirectional connection");
         let (mut send, mut recv) = connection.accept_bi().await?;
         let rcan_bytes = recv.read_to_end(254).await.map_err(AcceptError::from_err)?;
-        // info!(" read rcan bytes{:?}",rcan_bytes);
         // decode checks the signature of the rcan.
         // so we know its good.
         let decode = caps::Caps::decode(rcan_bytes);

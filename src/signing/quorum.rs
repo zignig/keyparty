@@ -44,8 +44,8 @@ pub struct QuorumWatcher {
     peers: BTreeSet<PublicKey>,
     token: CancellationToken,
     online_peers: BTreeSet<PublicKey>,
-    transactions: BTreeMap<i64, Sender<(PublicKey, TransMessage)>>,
-    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<(i64, Signature), (i64, AnyError)>>>,
+    transactions: BTreeMap<u64, Sender<(PublicKey, TransMessage)>>,
+    tasks: FuturesUnordered<n0_future::boxed::BoxFuture<Result<(u64, Signature), (u64, AnyError)>>>,
     key_package: Option<KeyPackage>,
     public_package: Option<PublicKeyPackage>,
 }
@@ -77,7 +77,7 @@ impl QuorumWatcher {
             online_peers: Default::default(),
             transactions: Default::default(),
             tasks: FuturesUnordered::<
-                n0_future::boxed::BoxFuture<Result<(i64, Signature), (i64, AnyError)>>,
+                n0_future::boxed::BoxFuture<Result<(u64, Signature), (u64, AnyError)>>,
             >::new(),
             key_package: None,
             public_package: None,
@@ -96,20 +96,18 @@ impl QuorumWatcher {
     async fn handle_event(&mut self, event: SigEvents) -> Result<()> {
         // Match for state machine
         if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {
-            info!("adding peer {:?}", &event.id);
+            info!("Adding peer {}", &event.id.fmt_short());
             self.online_peers.insert(event.id);
         };
         // Check for downed peers
 
         if event.message == GossipMessage::PeerDown {
-            warn!("node down !!! : {:}", &event.id.fmt_short());
+            warn!("Node down !!! : {:}", &event.id.fmt_short());
             self.online_peers.remove(&event.id);
-            warn!("{:#?}", &self.online_peers);
             if self.online_peers.len() < (self.config.min()) {
-                warn!("quorum lost!");
+                warn!("Quorum lost!");
                 self.state = QuorumSteps::Preparty;
                 // Tell the main runner that we have lost quorum
-                // self.outgoing.send(GossipMessage::QuorumDown).await.unwrap();
                 self.out(GossipMessage::QuorumDown);
                 return Ok(());
             }
@@ -118,13 +116,13 @@ impl QuorumWatcher {
         if event.message == GossipMessage::PeerUp {
             // new peer , say hello
             // this helps with getting quorum
-            warn!("{:#?}", &self.online_peers);
+            debug!("{:#?}", &self.online_peers);
             self.out(GossipMessage::Hello { timestamp: now() });
         }
 
         match &self.state {
             QuorumSteps::Init => {
-                warn!("Init Mode");
+                info!("Init Mode");
                 // let _ = self.outgoing.send(GossipMessage::Init).await;
                 // invite myself to the party.
                 self.online_peers.insert(self.my_id);
@@ -132,12 +130,14 @@ impl QuorumWatcher {
                 self.state = QuorumSteps::Preparty;
             }
             QuorumSteps::Preparty => {
-                warn!("PreParty");
+                info!("PreParty");
                 // if self.peers.contains(&event.id) && !self.online_peers.contains(&event.id) {
-                warn!("peers {:#?}", self.online_peers.len());
+                info!("Have {:#?} peers", self.online_peers.len());
                 if self.online_peers.len() >= (self.config.min()) {
                     info!("Made Quorum");
-                    info!("Peers {:?}", self.online_peers);
+                    for peer in &self.online_peers { 
+                        info!("Active peer {}",peer.fmt_short())
+                    };
                     self.state = QuorumSteps::Quorum;
                     // Tell the main runner that we have quorum
                     self.out(GossipMessage::QuorumUp);
@@ -172,8 +172,7 @@ impl QuorumWatcher {
                                 // this starts an actor on each endpoint
                                 // through redirection
                                 if !self.transactions.contains_key(&transaction_id) {
-                                    warn!("Create the task {}", transaction_id);
-                                    // error!("{:?}",&self.online_peers);
+                                    warn!("sign {}", transaction_id);
                                     let (tx, s) = SignerTask::new(
                                         self.my_id,
                                         transaction_id,

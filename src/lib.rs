@@ -4,6 +4,10 @@
 // This is to expose the client interface to a program
 // this makes keyparty a binary and a lib for clients
 
+// make clippy be annoying
+// #![warn(missing_docs)]
+
+
 pub mod client;
 pub mod keygen;
 pub mod service;

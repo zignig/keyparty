@@ -72,7 +72,7 @@ impl KeyClient {
                 self.authed = true;
                 return Ok(())
             } else { 
-                return Err(anyerr!("auth fuled").into())
+                return Err(anyerr!("auth failed").into())
             }
         }
         conn.close(1u8.into(), b"finished");

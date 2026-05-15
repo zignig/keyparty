@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     };
 
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().compact())
         .with(filter)
         .init();
 
@@ -33,22 +33,17 @@ async fn main() -> Result<()> {
     let config = Config::load()?;
     let _ = match args.command {
         Command::Generate { .. } | Command::Join { .. } => {
-            // So it gets dropped
+            // run key generation
             keygen::run(config.clone(), args).await
-            // FIX , run up the signer in base mode.
-            // use preparty to generate RBAC keys
-            // let new_args = cli::Args {
-            //     command: Command::Sign { message: None },
-            //     verbose: 0,
-            // };
-            // signing::run(config, new_args, None).await
         }
-        Command::Sign {
-            service,
-        } => signing::run(config, args.clone(), service).await,
+        Command::Sign { service } => {
+            // Set up the signing system
+            signing::run(config, args.clone(), service).await
+        }
         Command::Issue { .. } => {
-            let _  = service::issue(config.clone(), args.clone());
-            signing::run(config, args.clone(), true).await
+            // issue  new rbac
+            service::issue(config.clone(), args.clone())
+            // signing::run(config, args.clone(), true).await
         }
     };
     Ok(())
