@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
     let mut filter = Targets::new();
     match args.verbose {
         0 => filter = filter.with_target("keyparty", LevelFilter::INFO),
-        1 => filter = filter.with_target("keyparty", LevelFilter::DEBUG),
+        1 => filter = filter.with_target("keyparty::signing", LevelFilter::DEBUG),
         2 => {
             filter = filter
                 .with_target("iroh", LevelFilter::DEBUG)

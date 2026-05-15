@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use irpc::{Client, WithChannels, channel::oneshot, rpc_requests};
 
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use crate::IdClient;
 
@@ -76,28 +76,32 @@ impl ServiceActor {
 
 impl ProtocolHandler for ServiceActor {
     async fn accept(&self, conn: iroh::endpoint::Connection) -> Result<(), AcceptError> {
-        // if let Some(fren) = self.id_client.get(conn.remote_id()).await.unwrap() {
-        // info!("{:?}", fren);
-        // }
+        // Check if the rcan is still valid
         let id = conn.remote_id();
         if self.id_client.check(id).await.expect("rcan expired") {
-            info!("rcan good for {}",id.fmt_short());
-        }else { 
+            info!("rcan good for {}", id.fmt_short());
+        } else {
             conn.close(1u32.into(), b"invalid message");
             return Ok(());
         };
-
+        let fren = self.id_client.get(conn.remote_id()).await.unwrap().unwrap();
         while let Some(msg) = read_request::<SignerProtocol>(&conn).await? {
             match msg {
                 SigningMessage::ToSign(msg) => {
                     let WithChannels { inner, tx, .. } = msg;
-                    // Send to the signer
-                    let (smtx, smrx) = oneshot::channel();
-                    let out_mess = ServiceMessage::new(inner.data.clone(), smtx);
-                    let _ = self.service_out.send(out_mess).await;
-                    let reply_string = smrx.await.unwrap();
-                    debug!("back from the signer {:#?}", reply_string);
-                    tx.send(Ok(reply_string)).await.ok();
+                    // Check to see if the rcan has the correct powers;
+                    if fren.can_sign() {
+                        // Send to the signer
+                        let (smtx, smrx) = oneshot::channel();
+                        let out_mess = ServiceMessage::new(inner.data.clone(), smtx);
+                        let _ = self.service_out.send(out_mess).await;
+                        let reply_string = smrx.await.unwrap();
+                        debug!("back from the signer {:#?}", reply_string);
+                        tx.send(Ok(reply_string)).await.ok();
+                    } else {
+                        error!("cannot sign");
+                        tx.send(Err("cannon sign".to_string())).await.ok();
+                    }
                 }
             }
         }
@@ -118,6 +122,7 @@ impl ServiceClient {
         }
     }
 
+    //TODO fix the result stack
     pub async fn sign(&self, data: &str) -> Result<SigStatus, anyhow::Error> {
         self.inner
             .rpc(ToSign {

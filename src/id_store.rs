@@ -5,6 +5,8 @@ use std::{collections::BTreeMap, time::SystemTime};
 use iroh::EndpointId;
 use irpc::{Client, WithChannels, channel::oneshot, rpc_requests};
 use rcan::Rcan;
+use rcan::Capability;
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, info, warn};
@@ -40,6 +42,16 @@ impl Fren {
                 .expect("time does not exist"),
             rcan: None,
         }
+    }
+
+    // TDO add the rest of the permits
+    pub fn can_sign(&self) -> bool { 
+        if let Some(rcan) = self.rcan.clone() { 
+            let base_cap = Caps::sign();
+            let cap = rcan.capability();
+            return cap.permits(&base_cap);
+        }
+        false
     }
 }
 

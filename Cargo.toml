@@ -27,7 +27,6 @@ irpc = "0.13.0"
 irpc-iroh = "0.13.0"
 iroh-base = { version = "0.97.0", features = ["key"] }
 postcard = "1.1.3"
-derive_more = { version = "2.1.1", features = ["display"] }
 data-encoding = "2.10.0"
 n0-snafu = "0.2.2"
 chrono = "0.4.42"
@@ -36,3 +35,4 @@ rcan = "0.3.0"
 strum = { version = "0.28.0", features = ["derive"] }
 ed25519-dalek = { version = "3.0.0-pre.1" }
 tokio-util = "0.7.18"
+humantime = "2.3.0"

@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
                 let signer = client.signer().await;
                 // send 100 random messages
                 if let Some(count) = args.count {
-                    multi(&signer,count).await?;
+                    multi(&signer, count).await?;
                 }
                 let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
                 std::thread::spawn(move || input_loop(line_tx));
@@ -178,22 +178,28 @@ async fn main() -> Result<()> {
                     if text != "" {
                         let start = Instant::now();
                         info!("{}", text);
-                        let reply = signer.sign(&text).await?;
+                        let reply = signer.sign(&text).await;
                         let duration = start.elapsed();
 
                         print!("\nDuration = {} ms\n", duration.as_millis());
-                        match reply {
-                            SigStatus::Sig { sig } => {
-                                println!("{:#?}", sig);
-                                if let Some(origin) = config.origin() {
-                                    match origin.verify(text.as_bytes(), &sig) {
-                                        Ok(_) => println!("Signature is good"),
-                                        Err(e) => error!("Error {:#?}", e),
-                                    }
-                                }
-                            }
-                            SigStatus::SigError { error } => error!("Signing Error {:#?}", error),
-                        }
+                        println!("{:#?}",reply);
+                        // match reply {
+                        //     Ok(status) => match status {
+                        //         SigStatus::Sig { sig } => {
+                        //             println!("{:#?}", sig);
+                        //             if let Some(origin) = config.origin() {
+                        //                 match origin.verify(text.as_bytes(), &sig) {
+                        //                     Ok(_) => println!("Signature is good"),
+                        //                     Err(e) => error!("Error {:#?}", e),
+                        //                 }
+                        //             }
+                        //         }
+                        //         SigStatus::SigError { error } => {
+                        //             error!("Signing Error {:#?}", error)
+                        //         }
+                        //     },
+                        //     Err(err) => error!("signing error {:#?}",err),
+                        // }
                     }
                 }
             } else {

@@ -30,6 +30,10 @@ pub enum Command {
     Issue {
         key: PublicKey,
         #[arg(long,short, default_value_t = false)]
+        status: bool,
+        #[arg(long,short, default_value_t = false)]
         all: bool,
+        #[arg(long,short, default_value = "30d")]
+        duration: Option<String>
     }
 }

@@ -26,6 +26,18 @@ impl<C: Capability + Ord> CapSet<C> {
     pub fn new(set: impl IntoIterator<Item = impl Into<C>>) -> Self {
         Self(BTreeSet::from_iter(set.into_iter().map(Into::into)))
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &'_ C> + '_ {
+        self.0.iter()
+    }
+}
+
+impl<C: Capability + Ord> Capability for CapSet<C> {
+    fn permits(&self, other: &Self) -> bool {
+        other
+            .iter()
+            .all(|other_cap| self.iter().any(|self_cap| self_cap.permits(other_cap)))
+    }
 }
 
 // The actual capability
@@ -35,6 +47,7 @@ pub enum Cap {
     Sign,
     Issue,
     Revoke,
+    Status,
 }
 
 impl Capability for Cap {
@@ -44,6 +57,7 @@ impl Capability for Cap {
             (Cap::Sign, Cap::Sign) => true,
             (Cap::Issue, Cap::Issue) => true,
             (Cap::Revoke, Cap::Revoke) => true,
+            (Cap::Status, Cap::Status) => true,
             (_, _) => false,
         }
     }
@@ -60,6 +74,14 @@ impl std::ops::Deref for Caps {
     fn deref(&self) -> &Self::Target {
         let Self::V0(slf) = self;
         slf
+    }
+}
+
+impl Capability for Caps {
+    fn permits(&self, other: &Self) -> bool {
+        let Self::V0(slf) = self;
+        let Self::V0(other) = other;
+        slf.permits(other)
     }
 }
 
@@ -80,21 +102,35 @@ impl Caps {
         Self::new([Cap::Sign, Cap::Issue])
     }
 
+    pub fn status() -> Self {
+        Self::new([Cap::Status])
+    }
+
     pub fn as_text(&self) -> String {
         toml::to_string(self).unwrap()
     }
 
-    pub fn make(&self, secret_key: &SecretKey, target: EndpointId) -> Result<Rcan<Caps>> {
+    pub fn make(
+        &self,
+        secret_key: &SecretKey,
+        target: EndpointId,
+        duration: Duration,
+    ) -> Result<Rcan<Caps>> {
         let issuer = ed25519_dalek::SigningKey::from_bytes(&secret_key.to_bytes());
         let audience = target.as_verifying_key();
         let can = Rcan::issuing_builder(&issuer, audience, self.clone())
-            .sign(Expires::valid_for(Duration::from_mins(60 * 24 * 30)));
-            // .sign(Expires::valid_for(Duration::from_secs(120)));            
+            .sign(Expires::valid_for(duration));
+        // .sign(Expires::valid_for(Duration::from_secs(120)));
         Ok(can)
     }
 
-    pub fn encoded(&self, secret_key: &SecretKey, target: EndpointId) -> Result<String> {
-        let rc = self.make(secret_key, target)?;
+    pub fn encoded(
+        &self,
+        secret_key: &SecretKey,
+        target: EndpointId,
+        duration: Duration,
+    ) -> Result<String> {
+        let rc = self.make(secret_key, target, duration)?;
         let ser = rc.encode();
         let mut encoded = data_encoding::BASE32_NOPAD.encode(&ser);
         encoded = encoded.to_lowercase();
