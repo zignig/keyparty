@@ -17,7 +17,7 @@ use iroh_tickets::Ticket;
 use n0_error::{AnyError, anyerr};
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::{
     config::Config,

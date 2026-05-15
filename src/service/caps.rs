@@ -3,7 +3,7 @@
 // Nicked from
 // https://github.com/n0-computer/iroh-services/blob/main/src/caps.rs
 //
-// TODO rewrite rcan.
+// PERHAPS rewrite rcan.
 
 use anyhow::Result;
 // use ed25519_dalek::pkcs8::spki::der::pem::decode;

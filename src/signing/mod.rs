@@ -9,7 +9,7 @@ use iroh_gossip::{ALPN as GOSSIP_APLN, Gossip, TopicId, api::GossipSender};
 
 use n0_error::Result;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::service::irpc::ServiceMessage;
 use crate::{IdentityApi, cli::Args, config::Config};

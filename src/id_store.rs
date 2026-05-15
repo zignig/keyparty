@@ -4,12 +4,12 @@ use std::{collections::BTreeMap, time::SystemTime};
 
 use iroh::EndpointId;
 use irpc::{Client, WithChannels, channel::oneshot, rpc_requests};
-use rcan::Rcan;
 use rcan::Capability;
+use rcan::Rcan;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 use crate::service::caps::Caps;
 
@@ -45,8 +45,8 @@ impl Fren {
     }
 
     // TDO add the rest of the permits
-    pub fn can_sign(&self) -> bool { 
-        if let Some(rcan) = self.rcan.clone() { 
+    pub fn can_sign(&self) -> bool {
+        if let Some(rcan) = self.rcan.clone() {
             let base_cap = Caps::sign();
             let cap = rcan.capability();
             return cap.permits(&base_cap);
@@ -138,22 +138,22 @@ impl Actor {
             }
 
             IdentityMessage::Check(check) => {
-                let WithChannels { tx,inner , .. } = check;
-                let is_good = match self.store.get(&inner.key) { 
+                let WithChannels { tx, inner, .. } = check;
+                let is_good = match self.store.get(&inner.key) {
                     Some(fren) => {
                         // Check to see if the rbac is still valid
                         let mut status = false;
-                        if let Some(rcan) = fren.rcan.clone() { 
+                        if let Some(rcan) = fren.rcan.clone() {
                             let time = SystemTime::now();
                             if rcan.expires().is_valid_at(time) {
                                 status = true;
-                            } else { 
+                            } else {
                                 status = false;
                             }
                         }
                         status
                     }
-                    None => false
+                    None => false,
                 };
                 tx.send(is_good).await.ok();
             }
@@ -220,10 +220,10 @@ impl IdClient {
         }
     }
 
-    pub async fn check(&self,key: EndpointId) -> irpc::Result<bool> { 
+    pub async fn check(&self, key: EndpointId) -> irpc::Result<bool> {
         self.inner.rpc(Check { key }).await
     }
-    
+
     pub async fn set(&self, key: EndpointId, value: Fren) -> irpc::Result<()> {
         self.inner.rpc(Set { key, value }).await
     }

@@ -81,6 +81,7 @@ mod config {
             self.clone().secret
         }
 
+        #[allow(dead_code)]
         pub fn origin(&self) -> Option<VerifyingKey> {
             self.clone().origin
         }
@@ -182,7 +183,7 @@ async fn main() -> Result<()> {
                         let duration = start.elapsed();
 
                         print!("\nDuration = {} ms\n", duration.as_millis());
-                        println!("{:#?}",reply);
+                        println!("{:#?}", reply);
                         // match reply {
                         //     Ok(status) => match status {
                         //         SigStatus::Sig { sig } => {

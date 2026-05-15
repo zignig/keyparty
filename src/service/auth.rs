@@ -61,7 +61,7 @@ impl EndpointHooks for RCanAuth {
             return AfterHandshakeOutcome::Accept;
         }
         match self.client.get(id).await.unwrap() {
-            Some(fren) => {
+            Some(_) => {
                 return AfterHandshakeOutcome::Accept;
             }
             None => {

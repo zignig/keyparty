@@ -1,15 +1,10 @@
 # Outstanding stuff 
 
-1. u64 as time stamp seems to collide, perhaps UUID after all. - random i64 works fine.
 1. check TODOs
-1. clean up logging -- nearly.
-1. fix id_client and rcan setup.
 
-# Service
+# Service  
 
-1. turn auth into a local rpc
-    1. need to validate the rcan from the id_service
-    1. check rcan capabilities from the id_service
+1. Pretty much working.
 
 # Next stuff
 
@@ -37,19 +32,7 @@
 
 [https://frost.zfnd.org/tutorial/signing.html](https://frost.zfnd.org/tutorial/signing.html) 
 
-- local irpc client for signing works
-    - ongoing
-- gossip channel to communnicate
-    - working
-- messages
-    - hello
-    - start signing , with UUID transaction id
-        - using 64 bit time stamp , perhaps the has of it.
-    - round1 , make claim
-    - round2 , collect
-    - collect and sign
-    - compare sigs and save
-        - this needs more thought
+----
 
 # Done
 
@@ -85,3 +68,31 @@
 Maintaining quorm is harder than it looks.
 1. need to use hello messages to watch for node changes.
     1. gossip does this for us
+
+
+## other stuff 
+1. u64 as time stamp seems to collide, perhaps UUID after all. - random i64 works fine.
+1. clean up logging -- nearly.
+
+## Service 
+1. turn auth into a local rpc
+    1. need to validate the rcan from the id_service
+    1. check rcan capabilities from the id_service
+
+## Layout 
+
+- local irpc client for signing works
+    - ongoing
+- gossip channel to communicate
+    - working
+- messages
+    - hello
+    - start signing , with u64 transaction id
+        - using 64 bit time stamp , perhaps the has of it.
+    - round1 , make claim
+    - round2 , collect
+    - collect and sign
+
+## id cleint
+
+1. fix id_client and rcan setup.
