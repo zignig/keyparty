@@ -66,7 +66,7 @@ impl KeyClient {
 
         // get the response
         let msg = recv.read_to_end(2).await?;
-        warn!("reply message {:?}", msg);
+        debug!("reply message {:?}", msg);
         if msg.len() == 1 {
             if msg[0] == 1 { 
                 self.authed = true;

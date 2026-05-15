@@ -169,38 +169,39 @@ async fn main() -> Result<()> {
                 // send 100 random messages
                 if let Some(count) = args.count {
                     multi(&signer, count).await?;
-                }
-                let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
-                std::thread::spawn(move || input_loop(line_tx));
-                // broadcast each line we type
-                println!("> messages to sign ");
-                while let Some(text) = line_rx.recv().await {
-                    let text = text.trim();
-                    if text != "" {
-                        let start = Instant::now();
-                        info!("{}", text);
-                        let reply = signer.sign(&text).await;
-                        let duration = start.elapsed();
+                } else {
+                    let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
+                    std::thread::spawn(move || input_loop(line_tx));
+                    // broadcast each line we type
+                    println!("> messages to sign ");
+                    while let Some(text) = line_rx.recv().await {
+                        let text = text.trim();
+                        if text != "" {
+                            let start = Instant::now();
+                            info!("{}", text);
+                            let reply = signer.sign(&text).await;
+                            let duration = start.elapsed();
 
-                        print!("\nDuration = {} ms\n", duration.as_millis());
-                        println!("{:#?}", reply);
-                        // match reply {
-                        //     Ok(status) => match status {
-                        //         SigStatus::Sig { sig } => {
-                        //             println!("{:#?}", sig);
-                        //             if let Some(origin) = config.origin() {
-                        //                 match origin.verify(text.as_bytes(), &sig) {
-                        //                     Ok(_) => println!("Signature is good"),
-                        //                     Err(e) => error!("Error {:#?}", e),
-                        //                 }
-                        //             }
-                        //         }
-                        //         SigStatus::SigError { error } => {
-                        //             error!("Signing Error {:#?}", error)
-                        //         }
-                        //     },
-                        //     Err(err) => error!("signing error {:#?}",err),
-                        // }
+                            print!("\nDuration = {} ms\n", duration.as_millis());
+                            println!("{:#?}", reply);
+                            // match reply {
+                            //     Ok(status) => match status {
+                            //         SigStatus::Sig { sig } => {
+                            //             println!("{:#?}", sig);
+                            //             if let Some(origin) = config.origin() {
+                            //                 match origin.verify(text.as_bytes(), &sig) {
+                            //                     Ok(_) => println!("Signature is good"),
+                            //                     Err(e) => error!("Error {:#?}", e),
+                            //                 }
+                            //             }
+                            //         }
+                            //         SigStatus::SigError { error } => {
+                            //             error!("Signing Error {:#?}", error)
+                            //         }
+                            //     },
+                            //     Err(err) => error!("signing error {:#?}",err),
+                            // }
+                        }
                     }
                 }
             } else {

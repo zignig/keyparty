@@ -1,6 +1,11 @@
 # Outstanding stuff 
 
 1. check TODOs
+1. make the service sticky and make the service key optional
+1. convert the client to have ed25519_dalek verifying keys and signatures
+1. fix the counter on the keygen.
+1. get the client to look like a signer
+1. convert the rpc errors from strings to an enum
 
 # Service  
 
@@ -23,10 +28,10 @@
 
 ## Signing
 
-- show/process message and ask Y/N from the endpoint before signing
-    - itegrate into validator
-- check that there is quorum (min shares) before proceeding
-    - this needs to be be a better system , separate timed task.
+1. show/process message and ask Y/N from the endpoint before signing
+    1. itegrate into validator
+1. check that there is quorum (min shares) before proceeding
+    1. this needs to be be a better system , separate timed task.
 
 ### Layout
 
