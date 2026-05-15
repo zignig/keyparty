@@ -100,7 +100,7 @@ impl ProtocolHandler for ServiceActor {
                         tx.send(Ok(reply_string)).await.ok();
                     } else {
                         error!("cannot sign");
-                        tx.send(Err("cannon sign".to_string())).await.ok();
+                        tx.send(Err("Cannot sign".to_string())).await.ok();
                     }
                 }
             }

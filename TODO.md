@@ -5,7 +5,8 @@
 1. convert the client to have ed25519_dalek verifying keys and signatures
 1. fix the counter on the keygen.
 1. get the client to look like a signer
-1. convert the rpc errors from strings to an enum
+1. convert the rpc errors from strings to an enum **
+1. document all the functions ... thanks clippy
 
 # Service  
 

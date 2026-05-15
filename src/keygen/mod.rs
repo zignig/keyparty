@@ -18,6 +18,7 @@ use n0_error::Result;
 use tokio::task;
 use tracing::info;
 
+/// Run the key generation sequence.
 pub async fn run(config: Config, args: Args) -> Result<()> {
     let endpoint = Endpoint::builder(presets::N0)
         .bind()

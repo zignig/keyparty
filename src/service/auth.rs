@@ -1,5 +1,7 @@
 // rcan based auth system.
 
+
+/// APLN for the rcan authenciation service
 pub const ALPN: &[u8] = b"keyparty/auth/0";
 
 use crate::{

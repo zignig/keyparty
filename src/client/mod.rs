@@ -4,8 +4,9 @@ use crate::{ServiceClient, service::AUTH_ALPN};
 use anyhow::Result;
 use iroh::{Endpoint, EndpointId};
 use n0_error::{AnyError, anyerr};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
+/// This is a client to connect to a share signer
 pub struct KeyClient {
     endpoint: Endpoint,
     target: EndpointId,
@@ -14,6 +15,7 @@ pub struct KeyClient {
 }
 
 impl KeyClient {
+    /// Create a new client
     pub fn new(endpoint: Endpoint, target: EndpointId, rcan: String) -> Self {
         Self {
             endpoint,
@@ -23,15 +25,17 @@ impl KeyClient {
         }
     }
 
+    /// Is the client connected
     pub fn connected(&self) -> bool {
         self.authed
     }
 
+    /// Get a signing client from the KeyClient
     pub async fn signer(&self) -> ServiceClient {
         ServiceClient::connect(self.endpoint.clone(), self.target)
     }
 
-    // multi try login
+    /// Login to the remote service.
     pub async fn login(&mut self) -> Result<(), AnyError> {
         let mut counter = 0;
         const MAX_FAIL: i32 = 5;
@@ -49,6 +53,8 @@ impl KeyClient {
         }
     }
 
+    /// Send the rcan up to the service client.
+    /// This gets cached on the server so you only have to ask once.
     pub async fn auth(&mut self) -> Result<()> {
         debug!("endpoint auth send {}", self.target.fmt_short());
         let conn = self.endpoint.connect(self.target, AUTH_ALPN).await?;
