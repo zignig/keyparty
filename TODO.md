@@ -1,10 +1,7 @@
 # Outstanding stuff 
 
 1. check TODOs
-1. make the service sticky and make the service key optional
-1. convert the client to have ed25519_dalek verifying keys and signatures
 1. fix the counter on the keygen.
-1. get the client to look like a signer
 1. convert the rpc errors from strings to an enum **
 1. document all the functions ... thanks clippy
 
@@ -16,7 +13,6 @@
 
 1. hook up the validator
 1. send complete transaction back to the gossip with enum of state
-
 
 ## Some todo stuff 
 
@@ -79,6 +75,8 @@ Maintaining quorm is harder than it looks.
 ## other stuff 
 1. u64 as time stamp seems to collide, perhaps UUID after all. - random i64 works fine.
 1. clean up logging -- nearly.
+1. make the service sticky and make the service key optional
+1. convert the client to have ed25519_dalek verifying keys and signatures
 
 ## Service 
 1. turn auth into a local rpc
