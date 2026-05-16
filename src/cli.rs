@@ -24,8 +24,8 @@ pub enum Command {
         ticket: String,
     },
     Sign {
-        #[arg(long,short, default_value_t = false)]
-        service: bool,
+        #[arg(long)]
+        service: Option<bool>,
     },
     Issue {
         key: PublicKey,

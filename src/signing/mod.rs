@@ -68,7 +68,7 @@ pub enum GossipMessage {
 }
 
 // Init and run the signing party.
-pub async fn run(config: Config, _args: Args, run_service: bool) -> Result<()> {
+pub async fn run(mut config: Config, _args: Args, service: Option<bool>) -> Result<()> {
     info!("-- Start the signing party --");
 
     let secret = config.secret().clone();
@@ -101,16 +101,21 @@ pub async fn run(config: Config, _args: Args, run_service: bool) -> Result<()> {
 
     // messages from the service
     let (service_out, service_in) = tokio::sync::mpsc::channel::<ServiceMessage>(50);
-    // if the service flag is set , create  the service node
-    if run_service {
-        info!("Start the external service");
-        let token = cancel_token.clone();
-        tokio::spawn(service::run(
-            config.clone(),
-            id_client,
-            service_out.clone(),
-            token,
-        ));
+    // if the service flag is set , update the config
+    if let Some(save_service) = service {
+        config.set_service(save_service);
+    };
+    if let Some(run_service) = config.get_service() {
+        if run_service {
+            info!("Start the external service");
+            let token = cancel_token.clone();
+            tokio::spawn(service::run(
+                config.clone(),
+                id_client,
+                service_out.clone(),
+                token,
+            ));
+        }
     }
 
     // Gossip bits

@@ -131,6 +131,16 @@ impl Config {
         self.save();
     }
 
+    pub fn set_service(&mut self,active: bool ) { 
+        self.service = Some(active);
+        self.save();
+
+    }
+
+    pub fn get_service(&self) -> Option<bool> { 
+        self.service
+    }
+    
     pub fn min(&self) -> usize {
         self.min as usize
     }
