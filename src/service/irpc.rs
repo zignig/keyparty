@@ -2,7 +2,10 @@
 
 pub const ALPN: &[u8] = b"keyparty/service/0";
 
-use frost_ed25519::Signature;
+// use frost_ed25519::Signature;
+
+use ed25519_dalek::Signature;
+
 use iroh::{
     Endpoint,
     protocol::{AcceptError, ProtocolHandler},
@@ -44,6 +47,12 @@ impl ServiceMessage {
     pub async fn send(self, sig: SigStatus) {
         let _ = self.reply.send(sig).await;
     }
+}
+
+// Error to return to the irpc interface
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SigError { 
+    Fail
 }
 
 // Irpc structs
@@ -99,8 +108,8 @@ impl ProtocolHandler for ServiceActor {
                         debug!("back from the signer {:#?}", reply_string);
                         tx.send(Ok(reply_string)).await.ok();
                     } else {
-                        error!("cannot sign");
-                        tx.send(Err("Cannot sign".to_string())).await.ok();
+                        error!("Rcan does not have sign");
+                        tx.send(Err("No permissions to sign".to_string())).await.ok();
                     }
                 }
             }

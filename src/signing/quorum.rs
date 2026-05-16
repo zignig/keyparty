@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use ed25519_dalek::Signature as DalSignature;
+
 use frost_ed25519::Signature;
 use frost_ed25519::keys::KeyPackage;
 use frost_ed25519::keys::PublicKeyPackage;
@@ -86,7 +88,7 @@ impl QuorumWatcher {
 
     fn out(&self, message: GossipMessage) {
         match self.outgoing.try_send(message) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(TrySendError::Full(_)) => error!("outgoing full"),
             Err(TrySendError::Closed(_)) => error!("outgoing disconnected"),
         }
@@ -135,9 +137,9 @@ impl QuorumWatcher {
                 info!("Have {:#?} peers", self.online_peers.len());
                 if self.online_peers.len() >= (self.config.min()) {
                     info!("Made Quorum");
-                    for peer in &self.online_peers { 
-                        info!("Active peer {}",peer.fmt_short())
-                    };
+                    for peer in &self.online_peers {
+                        info!("Active peer {}", peer.fmt_short())
+                    }
                     self.state = QuorumSteps::Quorum;
                     // Tell the main runner that we have quorum
                     self.out(GossipMessage::QuorumUp);
@@ -234,16 +236,22 @@ impl QuorumWatcher {
                 Some(item) = self.incoming.recv() => {
                     self.handle_event(item).await?
                 }
-                // Signing transactions
+                // Signing transactions , move back into the main runner and
+                // intercepted.
                 Some(val) = self.tasks.next(), if !self.tasks.is_empty() => {
                     debug!("task finish {:#?}",&val);
                     match val {
                         Ok((transaction_id,signature)) => {
                             debug!("transaction {} finished",&transaction_id);
+                            // convert the signature from a frost signature
+                            // to a dalek signature
+                            let sig_bytes: [u8;64] = signature.serialize().unwrap().try_into().unwrap();
+                            let fix_sig: DalSignature = DalSignature::from_bytes(&sig_bytes);
+
                             self.transactions.remove(&transaction_id);
                             let gm = GossipMessage::SigStatus {
                                 transaction_id,
-                                status: SigStatus::Sig {sig: signature}
+                                status: SigStatus::Sig {sig: fix_sig}
                             };
                             self.out(gm);
                         }

@@ -12,7 +12,7 @@ use tracing::{debug, error, info};
 // use tracing_subscriber::prelude::*;
 
 mod config {
-    use frost_ed25519::VerifyingKey;
+    use ed25519_dalek::VerifyingKey;
 
     use iroh::{EndpointId, PublicKey, SecretKey};
     use std::path::PathBuf;

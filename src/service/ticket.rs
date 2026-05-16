@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use frost_ed25519::VerifyingKey;
+use ed25519_dalek::VerifyingKey;
 use iroh_tickets::{ParseError, Ticket};
 
 use iroh_base::EndpointId;

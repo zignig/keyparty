@@ -94,7 +94,10 @@ pub fn issue(config: Config, args: super::cli::Args) -> Result<(), AnyError> {
                     }
                 };
                 let rc = cap.encoded(&secret_key, key, dur)?;
-                let ticket = ServiceTicket::new(secret_key.clone().public(), verify_key, rc);
+                // Convert to dalek key
+                let vkey_bytes : [u8;32] = verify_key.serialize().unwrap().try_into().unwrap();
+                let vkey = ed25519_dalek::VerifyingKey::from_bytes(&vkey_bytes).unwrap();
+                let ticket = ServiceTicket::new(secret_key.clone().public(), vkey, rc);
                 let val = ticket.serialize();
                 println!("-------- ticket -------\n");
                 println!("  {}", &val);
