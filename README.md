@@ -79,7 +79,7 @@ Bind the ticket to the client.
 client --ticket=<TICKET>
 
 ```
-Now the client will connect and aut  to the the Endpoint where the ticket was issued and sign 
+Now the client will connect and autenticate to the the Endpoint where the ticket was issued and sign 
 data send to it.
 
 ## Ongoing works
