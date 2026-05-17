@@ -5,10 +5,10 @@ pub use self::frosted::{FrostyClient, FrostyServer, ProcessSteps};
 
 mod frosted {
     use tokio::task;
-    use tracing::{debug, error, warn};
+    use tracing::{debug, error, info, warn};
 
     use std::{
-        collections::{BTreeMap},
+        collections::BTreeMap,
         sync::{
             Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
@@ -18,8 +18,8 @@ mod frosted {
     use anyhow::Result;
 
     // Key Package imports
+    use frost_ed25519::keys::dkg::round1::Package as R1package;
     use frost_ed25519::keys::dkg::round2::Package as R2Package;
-    use frost_ed25519::{ keys::dkg::round1::Package as R1package};
 
     use iroh::{
         Endpoint, EndpointId, PublicKey,
@@ -169,29 +169,32 @@ mod frosted {
     impl ProtocolHandler for FrostyServer {
         async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
             let mut authed = false;
+            let id: EndpointId = conn.remote_id().into();
+            // If all the friends have connected , stop any more.
+            if !self.peers.lock().unwrap().contains_key(&id)
+                && self.peer_count.load(Ordering::SeqCst) == self.max_peers
+            {
+                conn.close(1u32.into(), b"");
+                return Ok(());
+            }
             while let Some(msg) = read_request::<FrostyProtocol>(&conn).await? {
                 match msg {
                     FrostyMessage::Auth(msg) => {
                         let WithChannels { inner, tx, .. } = msg;
                         if authed {
-                            conn.close(1u32.into(), b"invalid message");
+                            conn.close(1u32.into(), b"already authenticated");
                             break;
                         } else if inner.token != self.auth_token {
                             conn.close(1u32.into(), b"permission denied");
                             break;
                         } else {
-                            let peer_count = self.peer_count.fetch_add(1, Ordering::SeqCst);
-                            if peer_count == self.max_peers {
-                                warn!("MAX CLIENTS REACHED");
-                                // conn.close(1u32.into(), b"max_peers");
-                                // break;
-                            }
                             authed = true;
-                            self.peers
-                                .lock()
-                                .unwrap()
-                                .insert(conn.remote_id().into(), "fren".to_string());
-                            debug!("auth succeced for {:?}", conn.remote_id());
+                            self.peers.lock().unwrap().insert(id, "fren".to_string());
+
+                            let len = self.peers.lock().unwrap().len();
+                            self.peer_count.store(len, Ordering::SeqCst);
+
+                            info!("Auth succeced for {}", id.fmt_short());
                             debug!("{:?}", &self.peers);
                             tx.send(Ok(())).await.ok();
                         }
@@ -218,7 +221,7 @@ mod frosted {
             auth_token: String,
             max_peers: usize,
             my_id: PublicKey,
-            new_id : PublicKey,
+            new_id: PublicKey,
         ) -> Self {
             let s = Self {
                 max_peers: max_peers,
@@ -366,7 +369,7 @@ mod frosted {
                     let WithChannels { tx, .. } = tx;
                     tx.send(self.new_id).await.expect("bad ident");
                 }
-                
+
                 FrostyMessage::Finish(fin) => {
                     warn!("Finishing Transaction");
                     let WithChannels { tx, .. } = fin;

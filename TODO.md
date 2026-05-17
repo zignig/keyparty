@@ -1,7 +1,5 @@
 # Outstanding stuff 
 
-1. check TODOs
-1. fix the counter on the keygen.
 1. convert the rpc errors from strings to an enum **
 1. document all the functions ... thanks clippy
 
@@ -38,6 +36,8 @@
 
 # Done
 
+1. check TODOs
+1. fix the counter on the keygen.
 1. new config file just creates the secret key
 1. Split into keyparty and signer.
 1. change the wait times to minimise the sequence time.
